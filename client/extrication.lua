@@ -334,39 +334,95 @@ local function BuildTargetOptions(vehicle)
 end
 
 -- ─────────────────────────────────────────────
---  Scan Thread
+--  Scan Thread – optimiert
 -- ─────────────────────────────────────────────
 
 CreateThread(function()
-    Config.Extrication = Config.Extrication or { onlyWrecked = false }
+    Config.Extrication  = Config.Extrication  or { onlyWrecked = false }
+    Config.PlayerVehicles = Config.PlayerVehicles or { enabled = true }
     Wait(500)
 
     while FD.ModuleEnabled('Extrication') do
-        local pCoords = GetEntityCoords(PlayerPedId())
 
-        for _, vehicle in ipairs(GetGamePool('CVehicle')) do
-            if not activeTargets[vehicle] then
-                local vCoords = GetEntityCoords(vehicle)
-                if #(pCoords - vCoords) < 30.0 then
-                    if not Config.Extrication.onlyWrecked or IsVehicleWrecked(vehicle) then
-                        exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
-                        activeTargets[vehicle] = true
+        -- Kein FD-Job → langsam scannen, Targets räumen
+        if not FD.HasJob() then
+            if next(activeTargets) then
+                for vehicle in pairs(activeTargets) do
+                    if DoesEntityExist(vehicle) then
+                        exports.ox_target:removeLocalEntity(vehicle)
                     end
+                    activeTargets[vehicle]      = nil
+                    stabilizedVehicles[vehicle] = nil
+                end
+            end
+            Wait(5000)
+            goto continue
+        end
+
+        do
+            local pCoords = GetEntityCoords(PlayerPedId())
+
+            -- Hilfsfunktion: Fahrzeug registrieren wenn alle Checks bestehen
+            local function TryRegisterVehicle(vehicle)
+                if activeTargets[vehicle] then return end
+                if not DoesEntityExist(vehicle) then return end
+                if #(GetEntityCoords(vehicle) - pCoords) > 30.0 then return end
+                if Config.Extrication.onlyWrecked and not IsVehicleWrecked(vehicle) then return end
+
+                if Config.PlayerVehicles.enabled then
+                    -- Synchroner Check: Cache-Treffer oder nil (noch unbekannt)
+                    local known = FD.IsPlayerVehicle(vehicle)
+
+                    if known == false then return end   -- sicher kein Spieler-Fahrzeug
+
+                    if known == nil then
+                        -- Cache noch leer → async nachladen, diesmal überspringen
+                        FD.PrefetchVehicle(vehicle, function(isPlayer)
+                            if isPlayer and not activeTargets[vehicle] and DoesEntityExist(vehicle) then
+                                exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
+                                activeTargets[vehicle] = true
+                                FD.Debug('Target nachregistriert (async): Fahrzeug %d', vehicle)
+                            end
+                        end)
+                        return
+                    end
+                end
+
+                -- Alle Checks bestanden → Target setzen
+                exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
+                activeTargets[vehicle] = true
+                FD.Debug('Target gesetzt: Fahrzeug %d', vehicle)
+            end
+
+            -- Primär: GetClosestVehicle (günstig)
+            local closest = GetClosestVehicle(pCoords.x, pCoords.y, pCoords.z, 30.0, 0, 70)
+            if closest and closest ~= 0 then
+                TryRegisterVehicle(closest)
+            end
+
+            -- Sekundär: GetGamePool nur wenn aktive Szene vorhanden
+            if next(activeTargets) then
+                local pool = GetGamePool('CVehicle')
+                for i, vehicle in ipairs(pool) do
+                    TryRegisterVehicle(vehicle)
+                    if i % 10 == 0 then Wait(0) end
+                end
+            end
+
+            -- Cleanup: weg oder zu weit
+            for vehicle in pairs(activeTargets) do
+                local gone = not DoesEntityExist(vehicle)
+                local far  = not gone and #(pCoords - GetEntityCoords(vehicle)) > 40.0
+                if gone or far then
+                    if not gone then exports.ox_target:removeLocalEntity(vehicle) end
+                    activeTargets[vehicle]      = nil
+                    stabilizedVehicles[vehicle] = nil
                 end
             end
         end
 
-        for vehicle in pairs(activeTargets) do
-            local gone = not DoesEntityExist(vehicle)
-            local far  = not gone and #(pCoords - GetEntityCoords(vehicle)) > 40.0
-            if gone or far then
-                if not gone then exports.ox_target:removeLocalEntity(vehicle) end
-                activeTargets[vehicle]      = nil
-                stabilizedVehicles[vehicle] = nil
-            end
-        end
-
-        Wait(5000)
+        ::continue::
+        Wait(next(activeTargets) and 3000 or 5000)
     end
 end)
 

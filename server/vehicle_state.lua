@@ -5,7 +5,47 @@
 
 VehicleState = {}
 
-local stateCache = {}   -- { [plate] = { [fullKey] = value } }
+local stateCache        = {}   -- { [plate] = { [fullKey] = value } }
+local pvCache           = {}   -- { [plate] = { result = bool, ttl = number } }
+local PV_CACHE_TTL      = 120000
+
+-- ─────────────────────────────────────────────
+--  Callback: Spieler-Fahrzeug Check
+--  Client fragt an, Server prüft DB
+-- ─────────────────────────────────────────────
+
+lib.callback.register('d4rk_fd_utility:cb_isPlayerVehicle', function(source, plate)
+    if not plate or plate == '' then return false end
+    plate = string.upper(string.gsub(plate, '%s+', ''))
+
+    if Config.Framework == 'standalone' then return true end
+    if not Config.PlayerVehicles or not Config.PlayerVehicles.enabled then return true end
+
+    -- Server-Cache prüfen
+    local hit = pvCache[plate]
+    if hit and GetGameTimer() < hit.ttl then return hit.result end
+
+    -- Query dynamisch aus Config bauen – nutzt Server-eigene Fahrzeugtabelle
+    local tbl    = Config.PlayerVehicles.dbTable  or 'player_vehicles'
+    local col    = Config.PlayerVehicles.dbColumn or 'plate'
+    local query  = ('SELECT 1 FROM `%s` WHERE `%s` = @plate LIMIT 1'):format(tbl, col)
+
+    local row      = DB.SingleSync(query, { ['@plate'] = plate })
+    local isPlayer = row ~= nil
+
+    pvCache[plate] = { result = isPlayer, ttl = GetGameTimer() + PV_CACHE_TTL }
+    FD.Debug('cb_isPlayerVehicle: %s → %s [%s.%s]', plate, tostring(isPlayer), tbl, col)
+    return isPlayer
+end)
+
+-- Anderen Scripts erlauben den Cache zu invalidieren
+-- z.B. nach Fahrzeug-Rückgabe / Verkauf
+RegisterNetEvent('d4rk_fd_utility:sv_invalidateVehicleCache', function(plate)
+    if plate then pvCache[string.upper(plate)] = nil
+    else pvCache = {} end
+end)
+
+
 
 -- ─────────────────────────────────────────────
 --  Helpers

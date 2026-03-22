@@ -2,34 +2,57 @@
 --  d4rk_fd_utility – Server Item Handler
 ---------------------------------------------------
 
--- Item entfernen (vom Client getriggert nach Nutzung)
+-- ─────────────────────────────────────────────
+--  Server-seitiger Job-Check
+--  Sekundäre Sicherheitsebene gegen Client-Cheats
+-- ─────────────────────────────────────────────
+
+local function SvHasJob(src)
+    local fw = Config.Framework
+
+    if fw == 'qbx' then
+        local player = exports['qbx_core']:GetPlayer(src)
+        if not player then return false end
+        return Config.Jobs[player.PlayerData.job.name] == true
+
+    elseif fw == 'qb' then
+        local QBCore = exports['qb-core']:GetCoreObject()
+        local player = QBCore.Functions.GetPlayer(src)
+        if not player then return false end
+        return Config.Jobs[player.PlayerData.job.name] == true
+
+    elseif fw == 'esx' then
+        local ESX    = exports['es_extended']:getSharedObject()
+        local player = ESX.GetPlayerFromId(src)
+        if not player then return false end
+        return Config.Jobs[player.getJob().name] == true
+    end
+
+    return true -- standalone
+end
+
+-- ─────────────────────────────────────────────
+--  Item entfernen
+-- ─────────────────────────────────────────────
+
 RegisterNetEvent('d4rk_fd_utility:sv_removeItem', function(itemName, amount)
     local src = source
     if not Config.UseInventory then return end
+    if not SvHasJob(src) then return end
 
     local cfg = Config.Items[itemName]
     if not cfg or not cfg.consume then return end
 
     exports.ox_inventory:RemoveItem(src, itemName, amount or 1)
-    if Config.Debug then
-        print(('[d4rk_fd_utility] Item entfernt: %s x%d von Player %d'):format(itemName, amount or 1, src))
-    end
+    FD.Debug('Item entfernt: %s x%d von Player %d', itemName, amount or 1, src)
 end)
 
--- Airbag-Deaktivierung loggen / für andere Scripte nutzbar
-RegisterNetEvent('d4rk_fd_utility:sv_airbagDeactivated', function(netVehicle)
-    local src = source
-    if Config.Debug then
-        print(('[d4rk_fd_utility] Airbag deaktiviert – Player %d, Fahrzeug NetID %d'):format(src, netVehicle))
-    end
-    -- Hier könnte man z.B. ein Log-Event feuern oder CAD-System informieren
-end)
-
+-- ─────────────────────────────────────────────
+--  Cleanup bei Disconnect
+-- ─────────────────────────────────────────────
 
 AddEventHandler('playerDropped', function(reason)
     local src = source
     TriggerClientEvent('d4rk_fd_utility:cl_cleanupProps', src)
-    if Config.Debug then
-        print(('[d4rk_fd_utility] Props cleanup für Player %d (%s)'):format(src, reason))
-    end
+    FD.Debug('Props cleanup für Player %d (%s)', src, reason)
 end)

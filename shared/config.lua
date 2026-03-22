@@ -7,7 +7,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 --  Framework & Integrations
 -- ─────────────────────────────────────────────
-Config.Framework     = 'qb'          -- 'qb' | 'esx' | 'standalone'
+Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
 Config.Debug         = false         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
@@ -31,6 +31,24 @@ Config.Modules = {
 -- Extrication – Zusatz-Optionen
 Config.Extrication = {
     onlyWrecked = false,   -- true → Target nur auf beschädigten Fahrzeugen anzeigen
+}
+
+-- ─────────────────────────────────────────────
+--  Spieler-Fahrzeug Erkennung
+-- ─────────────────────────────────────────────
+Config.PlayerVehicles = {
+    enabled               = true,
+
+    -- Tabelle + Spalte aus dem Server-eigenen Fahrzeugsystem
+    -- Einfach anpassen falls der Server etwas anderes nutzt
+    dbTable               = 'player_vehicles',  -- QB/QBX default
+    dbColumn              = 'plate',            -- Spaltenname für Kennzeichen
+
+    -- Beispiele:
+    --   ESX:              dbTable = 'owned_vehicles',  dbColumn = 'plate'
+    --   Eigenes System:   dbTable = 'vehicles',        dbColumn = 'numberplate'
+
+    requireLettersInPlate = true,  -- NPC-Platten ohne Buchstaben vorfiltern
 }
 
 -- ─────────────────────────────────────────────
