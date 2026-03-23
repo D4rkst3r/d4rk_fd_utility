@@ -25,13 +25,13 @@ lib.callback.register('d4rk_fd_utility:cb_isPlayerVehicle', function(source, pla
     local hit = pvCache[plate]
     if hit and GetGameTimer() < hit.ttl then return hit.result end
 
-    -- Query dynamisch aus Config bauen – nutzt Server-eigene Fahrzeugtabelle
-    local tbl    = Config.PlayerVehicles.dbTable  or 'player_vehicles'
-    local col    = Config.PlayerVehicles.dbColumn or 'plate'
-    local query  = ('SELECT 1 FROM `%s` WHERE `%s` = @plate LIMIT 1'):format(tbl, col)
+    -- MySQL.scalar.await – gibt nur den ersten Wert zurück, günstiger als single
+    local tbl   = Config.PlayerVehicles.dbTable  or 'player_vehicles'
+    local col   = Config.PlayerVehicles.dbColumn or 'plate'
+    local query = ('SELECT 1 FROM `%s` WHERE `%s` = ? LIMIT 1'):format(tbl, col)
 
-    local row      = DB.SingleSync(query, { ['@plate'] = plate })
-    local isPlayer = row ~= nil
+    local result   = DB.ScalarSync(query, { plate })
+    local isPlayer = result ~= nil and result ~= false
 
     pvCache[plate] = { result = isPlayer, ttl = GetGameTimer() + PV_CACHE_TTL }
     FD.Debug('cb_isPlayerVehicle: %s → %s [%s.%s]', plate, tostring(isPlayer), tbl, col)
@@ -71,9 +71,9 @@ function VehicleState.Set(plate, fullKey, value)
 
     DB.Execute(
         [[INSERT INTO fd_vehicle_states (plate, state_key, state_value)
-          VALUES (@plate, @key, @value)
-          ON DUPLICATE KEY UPDATE state_value = @value, updated_at = CURRENT_TIMESTAMP]],
-        { ['@plate'] = plate, ['@key'] = fullKey, ['@value'] = json.encode(value) }
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE state_value = VALUES(state_value), updated_at = CURRENT_TIMESTAMP]],
+        { plate, fullKey, json.encode(value) }
     )
 end
 
@@ -81,8 +81,8 @@ function VehicleState.GetAll(plate, cb)
     if stateCache[plate] then cb(stateCache[plate]) return end
 
     DB.Fetch(
-        'SELECT state_key, state_value FROM fd_vehicle_states WHERE plate = @plate',
-        { ['@plate'] = plate },
+        'SELECT state_key, state_value FROM fd_vehicle_states WHERE plate = ?',
+        { plate },
         function(rows)
             local result = {}
             for _, row in ipairs(rows or {}) do
@@ -97,10 +97,7 @@ end
 
 function VehicleState.Clear(plate, cb)
     stateCache[plate] = nil
-    DB.Execute(
-        'DELETE FROM fd_vehicle_states WHERE plate = @plate',
-        { ['@plate'] = plate }, cb
-    )
+    DB.Execute('DELETE FROM fd_vehicle_states WHERE plate = ?', { plate }, cb)
 end
 
 function VehicleState.ClearModule(plate, module, cb)
@@ -112,8 +109,9 @@ function VehicleState.ClearModule(plate, module, cb)
         end
     end
     DB.Execute(
-        "DELETE FROM fd_vehicle_states WHERE plate = @plate AND state_key LIKE @prefix",
-        { ['@plate'] = plate, ['@prefix'] = module .. '_%' }, cb
+        "DELETE FROM fd_vehicle_states WHERE plate = ? AND state_key LIKE ?",
+        { plate, module .. '_%' },
+        cb
     )
 end
 

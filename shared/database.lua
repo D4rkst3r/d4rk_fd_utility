@@ -1,52 +1,46 @@
 ---------------------------------------------------
 --  d4rk_fd_utility – Database Abstraktion
---  Unterstützt: oxmysql | mysql-async | ghmattimysql
+--  oxmysql:  MySQL.*.await  (Lua 5.4 native)
+--  mysql-async / ghmattimysql: Callback-Fallback
 ---------------------------------------------------
 
 DB = {}
-
--- ─────────────────────────────────────────────
---  Interner Wrapper – wählt die richtige Resource
--- ─────────────────────────────────────────────
 
 local function getAdapter()
     return Config.Database or 'oxmysql'
 end
 
----Führt eine INSERT / UPDATE / DELETE Query aus
----@param query  string
----@param params table
----@param cb     function|nil  callback(affectedRows)
+-- ─────────────────────────────────────────────
+--  Execute  (INSERT / UPDATE / DELETE)
+-- ─────────────────────────────────────────────
+
 function DB.Execute(query, params, cb)
     local adapter = getAdapter()
 
     if adapter == 'oxmysql' then
-        exports.oxmysql:execute(query, params, cb)
+        if cb then
+            MySQL.update(query, params, cb)
+        else
+            MySQL.update(query, params)
+        end
 
     elseif adapter == 'mysql-async' then
-        MySQL.Async.execute(query, params, function(rows)
-            if cb then cb(rows) end
-        end)
+        MySQL.Async.execute(query, params, cb)
 
     elseif adapter == 'ghmattimysql' then
-        exports['ghmattimysql']:execute(query, params, function(rows)
-            if cb then cb(rows) end
-        end)
-
-    else
-        print(('[d4rk_fd_utility] ^1Unbekannter DB Adapter: %s^7'):format(adapter))
+        exports['ghmattimysql']:execute(query, params, cb)
     end
 end
 
----Liest eine einzelne Zeile
----@param query  string
----@param params table
----@param cb     function  callback(row|nil)
+-- ─────────────────────────────────────────────
+--  Single  (SELECT – eine Zeile)
+-- ─────────────────────────────────────────────
+
 function DB.Single(query, params, cb)
     local adapter = getAdapter()
 
     if adapter == 'oxmysql' then
-        exports.oxmysql:single(query, params, cb)
+        MySQL.single(query, params, cb)
 
     elseif adapter == 'mysql-async' then
         MySQL.Async.fetchAll(query, params, function(result)
@@ -54,24 +48,19 @@ function DB.Single(query, params, cb)
         end)
 
     elseif adapter == 'ghmattimysql' then
-        exports['ghmattimysql']:scalar(query, params, function(result)
-            if cb then cb(result) end
-        end)
-
-    else
-        print(('[d4rk_fd_utility] ^1Unbekannter DB Adapter: %s^7'):format(adapter))
+        exports['ghmattimysql']:scalar(query, params, cb)
     end
 end
 
----Liest mehrere Zeilen
----@param query  string
----@param params table
----@param cb     function  callback(rows)
+-- ─────────────────────────────────────────────
+--  Fetch  (SELECT – mehrere Zeilen)
+-- ─────────────────────────────────────────────
+
 function DB.Fetch(query, params, cb)
     local adapter = getAdapter()
 
     if adapter == 'oxmysql' then
-        exports.oxmysql:query(query, params, cb)
+        MySQL.query(query, params, cb)
 
     elseif adapter == 'mysql-async' then
         MySQL.Async.fetchAll(query, params, function(result)
@@ -82,34 +71,156 @@ function DB.Fetch(query, params, cb)
         exports['ghmattimysql']:fetch(query, params, function(result)
             if cb then cb(result or {}) end
         end)
-
-    else
-        print(('[d4rk_fd_utility] ^1Unbekannter DB Adapter: %s^7'):format(adapter))
     end
 end
 
----Synchrone Version von DB.Single (nur oxmysql)
----@param query  string
----@param params table
----@return table|nil
+-- ─────────────────────────────────────────────
+--  Scalar  (SELECT – einzelner Wert)
+-- ─────────────────────────────────────────────
+
+function DB.Scalar(query, params, cb)
+    local adapter = getAdapter()
+
+    if adapter == 'oxmysql' then
+        MySQL.scalar(query, params, cb)
+
+    elseif adapter == 'mysql-async' then
+        MySQL.Async.fetchScalar(query, params, cb)
+
+    elseif adapter == 'ghmattimysql' then
+        exports['ghmattimysql']:scalar(query, params, cb)
+    end
+end
+
+-- ─────────────────────────────────────────────
+--  Await-Versionen  (für Coroutine-Kontext)
+--  Nutzbar in: lib.callback.register, CreateThread
+-- ─────────────────────────────────────────────
+
+-- await: einzelne Zeile
 function DB.SingleSync(query, params)
     local adapter = getAdapter()
+
     if adapter == 'oxmysql' then
-        return exports.oxmysql:single_sync(query, params)
+        return MySQL.single.await(query, params)
+
+    elseif adapter == 'mysql-async' then
+        local p = promise.new()
+        MySQL.Async.fetchAll(query, params, function(r) p:resolve(r and r[1] or nil) end)
+        return Citizen.Await(p)
+
+    elseif adapter == 'ghmattimysql' then
+        local p = promise.new()
+        exports['ghmattimysql']:fetch(query, params, function(r) p:resolve(r and r[1] or nil) end)
+        return Citizen.Await(p)
     end
-    -- Fallback für andere Adapter: nil zurückgeben
-    -- und Callback-Version nutzen
-    return nil
 end
 
----Synchrone Version von DB.Fetch (nur oxmysql)
----@param query  string
----@param params table
----@return table
+-- await: mehrere Zeilen
 function DB.FetchSync(query, params)
     local adapter = getAdapter()
+
     if adapter == 'oxmysql' then
-        return exports.oxmysql:query_sync(query, params) or {}
+        return MySQL.query.await(query, params) or {}
+
+    elseif adapter == 'mysql-async' then
+        local p = promise.new()
+        MySQL.Async.fetchAll(query, params, function(r) p:resolve(r or {}) end)
+        return Citizen.Await(p)
+
+    elseif adapter == 'ghmattimysql' then
+        local p = promise.new()
+        exports['ghmattimysql']:fetch(query, params, function(r) p:resolve(r or {}) end)
+        return Citizen.Await(p)
     end
-    return {}
+end
+
+-- await: scalar
+function DB.ScalarSync(query, params)
+    local adapter = getAdapter()
+
+    if adapter == 'oxmysql' then
+        return MySQL.scalar.await(query, params)
+
+    elseif adapter == 'mysql-async' then
+        local p = promise.new()
+        MySQL.Async.fetchScalar(query, params, function(r) p:resolve(r) end)
+        return Citizen.Await(p)
+
+    elseif adapter == 'ghmattimysql' then
+        local p = promise.new()
+        exports['ghmattimysql']:scalar(query, params, function(r) p:resolve(r) end)
+        return Citizen.Await(p)
+    end
+end
+
+-- await: execute
+function DB.ExecuteSync(query, params)
+    local adapter = getAdapter()
+
+    if adapter == 'oxmysql' then
+        return MySQL.update.await(query, params)
+
+    elseif adapter == 'mysql-async' then
+        local p = promise.new()
+        MySQL.Async.execute(query, params, function(r) p:resolve(r) end)
+        return Citizen.Await(p)
+
+    elseif adapter == 'ghmattimysql' then
+        local p = promise.new()
+        exports['ghmattimysql']:execute(query, params, function(r) p:resolve(r) end)
+        return Citizen.Await(p)
+    end
+end
+
+-- ─────────────────────────────────────────────
+--  Prepared Statements  (oxmysql only)
+--  Für wiederholte Queries mit gleichem Statement
+--  deutlich schneller laut Benchmark
+-- ─────────────────────────────────────────────
+
+--[[
+    Beispiel:
+    local results = DB.Prepare(
+        'SELECT id FROM player_vehicles WHERE plate = ? LIMIT 1',
+        { { 'ABC123' }, { 'XYZ456' } }   -- mehrere Parameter-Sets
+    )
+]]
+function DB.Prepare(query, paramSets, cb)
+    local adapter = getAdapter()
+
+    if adapter == 'oxmysql' then
+        if cb then
+            MySQL.prepare(query, paramSets, cb)
+        else
+            MySQL.prepare(query, paramSets)
+        end
+    else
+        -- Fallback: normale Einzel-Queries
+        if cb then
+            local results = {}
+            for _, params in ipairs(paramSets or {}) do
+                DB.Single(query, params, function(r)
+                    results[#results + 1] = r
+                end)
+            end
+            cb(results)
+        end
+    end
+end
+
+function DB.PrepareSync(query, paramSets)
+    local adapter = getAdapter()
+
+    if adapter == 'oxmysql' then
+        return MySQL.prepare.await(query, paramSets)
+    else
+        -- Fallback: await-Version
+        local p = promise.new()
+        local results = {}
+        for _, params in ipairs(paramSets or {}) do
+            results[#results + 1] = DB.SingleSync(query, params)
+        end
+        return results
+    end
 end
