@@ -1,13 +1,11 @@
 ---------------------------------------------------
---  d4rk_fd_utility – Modul: Extrication
---  Türen / Reifen / Dach / Airbag / Stabilisierung
+--  d4rk_fd_utility - Modul: Extrication
+--  Turen / Reifen / Dach / Airbag / Stabilisierung
 ---------------------------------------------------
 if not FD.ModuleEnabled('Extrication') then return end
 
 -- ─────────────────────────────────────────────
---  Schema registrieren
---  Core registriert automatisch alle StateBag
---  Handler und ruft onApply bei Änderung auf
+--  Schema
 -- ─────────────────────────────────────────────
 
 FD.RegisterStateSchema('extrication', {
@@ -17,9 +15,6 @@ FD.RegisterStateSchema('extrication', {
         count   = 6,
         onApply = function(vehicle, index, value)
             if value then SetVehicleDoorBroken(vehicle, index, true) end
-        end,
-        onClear = function(vehicle, index)
-            SetVehicleDoorBreakout(vehicle, index, false)
         end,
     },
     tire = {
@@ -64,20 +59,13 @@ FD.RegisterStateSchema('extrication', {
     },
 })
 
--- ─────────────────────────────────────────────
---  Reset Handler (alle States gelöscht)
--- ─────────────────────────────────────────────
-
--- fd_cleared → kompletter Reset
 AddStateBagChangeHandler('fd_cleared', nil, function(bagName, _, value)
     if not value then return end
     local vehicle = GetEntityFromStateBagName(bagName)
     if not vehicle or not DoesEntityExist(vehicle) then return end
     FreezeEntityPosition(vehicle, false)
-    FD.Debug('Fahrzeug %d komplett zurückgesetzt', vehicle)
 end)
 
--- fd_module_cleared → nur Extrication zurücksetzen
 AddStateBagChangeHandler('fd_module_cleared', nil, function(bagName, _, value)
     if value ~= 'extrication' then return end
     local vehicle = GetEntityFromStateBagName(bagName)
@@ -86,11 +74,11 @@ AddStateBagChangeHandler('fd_module_cleared', nil, function(bagName, _, value)
 end)
 
 -- ─────────────────────────────────────────────
---  Lokaler Status (nicht persistiert)
+--  Lokaler Status
 -- ─────────────────────────────────────────────
 
-local activeTargets       = {}
-local stabilizedVehicles  = {}
+local activeTargets      = {}
+local stabilizedVehicles = {}
 
 -- ─────────────────────────────────────────────
 --  Helpers
@@ -102,7 +90,7 @@ local function IsVehicleWrecked(vehicle)
 end
 
 local function CanInteract(action, vehicle)
-    if not FD.HasJob()   then FD.Notify(T('no_job'), 'error')   return false end
+    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return false end
     if not FD.HasGrade('extrication') then FD.Notify(T('no_job'), 'error') return false end
     if not FD.CheckCooldown(('extr_%s_%d'):format(action, vehicle)) then
         FD.Notify(T('cooldown'), 'warning') return false
@@ -115,308 +103,222 @@ local function SetCD(action, vehicle)
 end
 
 -- ─────────────────────────────────────────────
---  Dach aufschneiden
+--  Extrication Menü
 -- ─────────────────────────────────────────────
 
-local function RemoveRoof(vehicle)
-    if not CanInteract('doorRemove', vehicle) then return end
-    if FD.State.Get(vehicle, 'extrication', 'roof') then
-        FD.Notify('Dach wurde bereits aufgeschnitten.', 'warning') return
-    end
-    if not FD.HasItem('rescuesaw') then FD.Notify(T('no_item'), 'error') return end
+local doorLabels = {
+    [0] = 'Fahrertür vorne',
+    [1] = 'Fahrertür hinten',
+    [2] = 'Beifahrertür vorne',
+    [3] = 'Beifahrertür hinten',
+    [4] = 'Motorhaube',
+    [5] = 'Kofferraum',
+}
 
-    local done = FD.Progress('Dach aufschneiden', 'saw', Config.Items.rescuesaw.useTime + 2000)
-    if not done then return end
+local tireLabels = {
+    [0] = 'Reifen vorne links',
+    [1] = 'Reifen vorne rechts',
+    [2] = 'Reifen hinten links',
+    [3] = 'Reifen hinten rechts',
+    [4] = 'Reifen mitte links',
+    [5] = 'Reifen mitte rechts',
+}
 
-    -- GTA hat keinen eigenen Dach-Door-Index (4=Motorhaube, 5=Kofferraum)
-    -- Karosserie-Schaden simuliert aufgeschnittenes Dach visuell
-    SetVehicleBodyHealth(vehicle, 200.0)
-    SetVehicleRoofLivery(vehicle, -1)
-    -- Extras deaktivieren (Soft-Top bei Cabrios)
-    for i = 0, 12 do
-        if HasVehicleExtra(vehicle, i) then
-            SetVehicleExtra(vehicle, i, true)
+local function OpenExtricationMenu(vehicle)
+    FD.Debug('extrication', 'Menü geöffnet – Fahrzeug %d | Türen: %s | Reifen: %s | Dach: %s | Airbag: %s | Stabi: %s',
+        vehicle,
+        tostring(FD.State.Get(vehicle, 'extrication', 'door', 0)),
+        tostring(FD.State.Get(vehicle, 'extrication', 'tire', 0)),
+        tostring(FD.State.Get(vehicle, 'extrication', 'roof')),
+        tostring(FD.State.Get(vehicle, 'extrication', 'airbag')),
+        tostring(FD.State.Get(vehicle, 'extrication', 'stabilized'))
+    )
+    local options = {}
+
+    -- Türen
+    for i = 0, 5 do
+        if GetIsDoorValid(vehicle, i)
+        and not FD.State.Get(vehicle, 'extrication', 'door', i) then
+            local doorIdx = i
+            local label   = doorLabels[i] or ('Tür %d'):format(i)
+            options[#options + 1] = {
+                title    = label .. ' entfernen',
+                icon     = i <= 3 and 'fas fa-door-open' or 'fas fa-car',
+                onSelect = function()
+                    if not CanInteract('doorRemove', vehicle) then return end
+                    local item = FD.HasItem('hydraulicspreader') and 'hydraulicspreader'
+                              or FD.HasItem('rescuesaw')         and 'rescuesaw'
+                              or nil
+                    if not item then FD.Notify(T('no_item'), 'error') return end
+
+                    local done = FD.Progress(
+                        ('Entferne %s'):format(label),
+                        item == 'hydraulicspreader' and 'spreizer' or 'saw',
+                        Config.Items[item].useTime
+                    )
+                    if not done then return end
+
+                    SetVehicleDoorBroken(vehicle, doorIdx, true)
+                    FD.State.Set(vehicle, 'extrication', 'door', doorIdx, true)
+                    SetCD('doorRemove', vehicle)
+                    FD.RemoveItem(item, 1)
+                    FD.Notify(label .. ' entfernt.', 'success')
+                end,
+            }
         end
     end
-    FD.State.Set(vehicle, 'extrication', 'roof', nil, true)
-    SetCD('doorRemove', vehicle)
-    FD.RemoveItem('rescuesaw', 1)
-    FD.Notify('Dach aufgeschnitten.', 'success')
-end
 
--- ─────────────────────────────────────────────
---  Airbag deaktivieren
--- ─────────────────────────────────────────────
+    -- Reifen
+    for i = 0, GetVehicleNumberOfWheels(vehicle) - 1 do
+        if not FD.State.Get(vehicle, 'extrication', 'tire', i) then
+            local tireIdx = i
+            local label   = tireLabels[i] or ('Reifen %d'):format(i)
+            options[#options + 1] = {
+                title    = label .. ' abschneiden',
+                icon     = 'fas fa-circle-notch',
+                onSelect = function()
+                    if not CanInteract('tireRemove', vehicle) then return end
+                    if not FD.HasItem('tirecutters') then FD.Notify(T('no_item'), 'error') return end
 
-local function DeactivateAirbag(vehicle)
-    if not CanInteract('airbag', vehicle) then return end
-    if FD.State.Get(vehicle, 'extrication', 'airbag') then
-        FD.Notify('Airbag bereits deaktiviert.', 'warning') return
+                    local done = FD.Progress(
+                        ('Schneide %s ab'):format(label),
+                        'saw',
+                        Config.Items.tirecutters.useTime
+                    )
+                    if not done then return end
+
+                    SetVehicleTyreBurst(vehicle, tireIdx, true, 1000.0)
+                    SetVehicleWheelHealth(vehicle, tireIdx, 0.0)
+                    if tireIdx == 2 then SetVehicleTyreBurst(vehicle, 4, true, 1000.0) end
+                    if tireIdx == 3 then SetVehicleTyreBurst(vehicle, 5, true, 1000.0) end
+                    FD.State.Set(vehicle, 'extrication', 'tire', tireIdx, true)
+                    SetCD('tireRemove', vehicle)
+                    FD.RemoveItem('tirecutters', 1)
+                    FD.Notify(label .. ' entfernt.', 'success')
+                end,
+            }
+        end
     end
 
-    local done = FD.Progress(T('airbag_deactivate'), 'kneel', Config.Cooldowns.airbag)
-    if not done then return end
+    -- Dach
+    if not FD.State.Get(vehicle, 'extrication', 'roof') then
+        options[#options + 1] = {
+            title    = 'Dach aufschneiden',
+            icon     = 'fas fa-cut',
+            onSelect = function()
+                if not CanInteract('doorRemove', vehicle) then return end
+                if not FD.HasItem('rescuesaw') then FD.Notify(T('no_item'), 'error') return end
 
-    SetVehicleCanBeVisiblyDamaged(vehicle, false)
-    FD.State.Set(vehicle, 'extrication', 'airbag', nil, true)
-    SetCD('airbag', vehicle)
-    FD.Notify(T('airbag_done'), 'success')
-end
+                local done = FD.Progress('Dach aufschneiden', 'saw', Config.Items.rescuesaw.useTime + 2000)
+                if not done then return end
 
--- ─────────────────────────────────────────────
---  Fahrzeug stabilisieren
--- ─────────────────────────────────────────────
-
-local function StabilizeVehicle(vehicle)
-    if not CanInteract('doorRemove', vehicle) then return end
-    if FD.State.Get(vehicle, 'extrication', 'stabilized') then
-        FD.Notify('Bereits stabilisiert.', 'warning') return
+                SetVehicleBodyHealth(vehicle, 200.0)
+                SetVehicleRoofLivery(vehicle, -1)
+                for i = 0, 12 do
+                    if HasVehicleExtra(vehicle, i) then SetVehicleExtra(vehicle, i, true) end
+                end
+                FD.State.Set(vehicle, 'extrication', 'roof', nil, true)
+                SetCD('doorRemove', vehicle)
+                FD.RemoveItem('rescuesaw', 1)
+                FD.Notify('Dach aufgeschnitten.', 'success')
+            end,
+        }
     end
 
-    local done = FD.Progress('Fahrzeug stabilisieren', 'place', 4000)
-    if not done then return end
+    -- Airbag
+    if not FD.State.Get(vehicle, 'extrication', 'airbag') then
+        options[#options + 1] = {
+            title    = T('airbag_deactivate'),
+            icon     = 'fas fa-wind',
+            onSelect = function()
+                if not CanInteract('airbag', vehicle) then return end
 
-    -- Keil-Props platzieren
-    local heading = GetEntityHeading(vehicle)
-    for _, offset in ipairs({{-1.2,1.5},{1.2,1.5},{-1.2,-1.5},{1.2,-1.5}}) do
-        local wx, wy, wz = table.unpack(GetOffsetFromEntityInWorldCoords(vehicle, offset[1], offset[2], -0.3))
-        FD.SpawnProp(Config.Props.wheel, vector3(wx, wy, wz), heading, 'cones')
+                local done = FD.Progress(T('airbag_deactivate'), 'kneel', Config.Cooldowns.airbag)
+                if not done then return end
+
+                SetVehicleCanBeVisiblyDamaged(vehicle, false)
+                FD.State.Set(vehicle, 'extrication', 'airbag', nil, true)
+                SetCD('airbag', vehicle)
+                FD.Notify(T('airbag_done'), 'success')
+            end,
+        }
     end
 
-    FreezeEntityPosition(vehicle, true)
-    FD.State.Set(vehicle, 'extrication', 'stabilized', nil, true)
-    stabilizedVehicles[vehicle] = true
-    FD.Notify('Fahrzeug stabilisiert.', 'success')
-end
+    -- Stabilisieren / Lösen
+    if not FD.State.Get(vehicle, 'extrication', 'stabilized') then
+        options[#options + 1] = {
+            title    = 'Fahrzeug stabilisieren',
+            icon     = 'fas fa-car-crash',
+            onSelect = function()
+                if not CanInteract('doorRemove', vehicle) then return end
 
-local function DestabilizeVehicle(vehicle)
-    if not FD.State.Get(vehicle, 'extrication', 'stabilized') then return end
-    FreezeEntityPosition(vehicle, false)
-    FD.ClearProps('cones')
-    FD.State.Set(vehicle, 'extrication', 'stabilized', nil, false)
-    stabilizedVehicles[vehicle] = nil
-    FD.Notify('Stabilisierung aufgehoben.', 'inform')
-end
+                local done = FD.Progress('Fahrzeug stabilisieren', 'place', 4000)
+                if not done then return end
 
--- ─────────────────────────────────────────────
---  Bone → Door Index Mapping
--- ─────────────────────────────────────────────
+                local heading = GetEntityHeading(vehicle)
+                for _, offset in ipairs({{-1.2,1.5},{1.2,1.5},{-1.2,-1.5},{1.2,-1.5}}) do
+                    local wx, wy, wz = table.unpack(GetOffsetFromEntityInWorldCoords(vehicle, offset[1], offset[2], -0.3))
+                    FD.SpawnProp(Config.Props.wheel, vector3(wx, wy, wz), heading, 'cones')
+                end
 
-local boneToDoorIndex = {
-    door_dside_f = 0,
-    door_dside_r = 1,
-    door_pside_f = 2,
-    door_pside_r = 3,
-    bonnet       = 4,
-    boot         = 5,
-}
-
-local boneToDoorLabel = {
-    door_dside_f = 'Fahrertür vorne',
-    door_dside_r = 'Fahrertür hinten',
-    door_pside_f = 'Beifahrertür vorne',
-    door_pside_r = 'Beifahrertür hinten',
-    bonnet       = 'Motorhaube',
-    boot         = 'Kofferraum',
-}
-
-local boneToTireIndex = {
-    wheel_lf = 0,
-    wheel_rf = 1,
-    wheel_lb = 2,
-    wheel_rb = 3,
-    wheel_lm = 4,
-    wheel_rm = 5,
-}
-
-local boneToTireLabel = {
-    wheel_lf = 'Reifen vorne links',
-    wheel_rf = 'Reifen vorne rechts',
-    wheel_lb = 'Reifen hinten links',
-    wheel_rb = 'Reifen hinten rechts',
-    wheel_lm = 'Reifen mitte links',
-    wheel_rm = 'Reifen mitte rechts',
-}
-
--- ─────────────────────────────────────────────
---  Bone-basierte Einzelaktionen
--- ─────────────────────────────────────────────
-
-local function RemoveDoorByIndex(vehicle, doorIndex, label)
-    if not CanInteract('doorRemove', vehicle) then return end
-    if FD.State.Get(vehicle, 'extrication', 'door', doorIndex) then
-        FD.Notify(label .. ' bereits entfernt.', 'warning') return
+                FreezeEntityPosition(vehicle, true)
+                FD.State.Set(vehicle, 'extrication', 'stabilized', nil, true)
+                stabilizedVehicles[vehicle] = true
+                FD.Debug('extrication', 'Fahrzeug %d stabilisiert', vehicle)
+                FD.Notify('Fahrzeug stabilisiert.', 'success')
+            end,
+        }
+    else
+        options[#options + 1] = {
+            title    = 'Stabilisierung lösen',
+            icon     = 'fas fa-unlock',
+            onSelect = function()
+                FreezeEntityPosition(vehicle, false)
+                FD.ClearProps('cones')
+                FD.State.Set(vehicle, 'extrication', 'stabilized', nil, false)
+                stabilizedVehicles[vehicle] = nil
+                FD.Notify('Stabilisierung aufgehoben.', 'inform')
+            end,
+        }
     end
 
-    local item = FD.HasItem('hydraulicspreader') and 'hydraulicspreader'
-              or FD.HasItem('rescuesaw')         and 'rescuesaw'
-              or nil
-    if not item then FD.Notify(T('no_item'), 'error') return end
-
-    local done = FD.Progress(
-        ('Entferne %s'):format(label),
-        item == 'hydraulicspreader' and 'spreizer' or 'saw',
-        Config.Items[item].useTime
-    )
-    if not done then return end
-
-    SetVehicleDoorBroken(vehicle, doorIndex, true)
-    FD.State.Set(vehicle, 'extrication', 'door', doorIndex, true)
-    SetCD('doorRemove', vehicle)
-    FD.RemoveItem(item, 1)
-    FD.Notify(label .. ' entfernt.', 'success')
-end
-
-local function RemoveTireByIndex(vehicle, tireIndex, label)
-    if not CanInteract('tireRemove', vehicle) then return end
-    if FD.State.Get(vehicle, 'extrication', 'tire', tireIndex) then
-        FD.Notify(label .. ' bereits entfernt.', 'warning') return
+    if #options == 0 then
+        FD.Notify('Keine Aktionen verfügbar.', 'warning')
+        return
     end
-    if not FD.HasItem('tirecutters') then FD.Notify(T('no_item'), 'error') return end
 
-    local done = FD.Progress(
-        ('Schneide %s ab'):format(label),
-        'saw',
-        Config.Items.tirecutters.useTime
-    )
-    if not done then return end
-
-    SetVehicleTyreBurst(vehicle, tireIndex, true, 1000.0)
-    SetVehicleWheelHealth(vehicle, tireIndex, 0.0)
-    if tireIndex == 2 then SetVehicleTyreBurst(vehicle, 4, true, 1000.0) end
-    if tireIndex == 3 then SetVehicleTyreBurst(vehicle, 5, true, 1000.0) end
-    FD.State.Set(vehicle, 'extrication', 'tire', tireIndex, true)
-    SetCD('tireRemove', vehicle)
-    FD.RemoveItem('tirecutters', 1)
-    FD.Notify(label .. ' entfernt.', 'success')
+    lib.registerContext({ id = 'fd_extrication_menu', title = 'Fahrzeugbefreiung', options = options })
+    lib.showContext('fd_extrication_menu')
 end
 
 -- ─────────────────────────────────────────────
---  ox_target – Bone-basierte Options
+--  ox_target – ein einziger Target pro Fahrzeug
 -- ─────────────────────────────────────────────
 
 local function BuildTargetOptions(vehicle)
-    local options = {}
-    local dist    = Config.Target.distance
-
-    -- Türen & Motorhaube/Kofferraum – je Bone eine Option
-    for bone, doorIndex in pairs(boneToDoorIndex) do
-        local label = boneToDoorLabel[bone]
-        local capturedBone  = bone
-        local capturedIndex = doorIndex
-        local capturedLabel = label
-
-        options[#options + 1] = {
-            name        = 'fd_door_' .. capturedBone,
-            icon        = doorIndex <= 3 and 'fas fa-door-open' or 'fas fa-car',
-            label       = capturedLabel .. ' entfernen',
-            bones       = { capturedBone },
-            distance    = dist,
-            onSelect    = function()
-                RemoveDoorByIndex(vehicle, capturedIndex, capturedLabel)
-            end,
-            canInteract = function()
-                return FD.HasJob()
-                    and not FD.State.Get(vehicle, 'extrication', 'door', capturedIndex)
-                    and GetIsDoorValid(vehicle, capturedIndex)
-            end,
-        }
-    end
-
-    -- Reifen – je Wheel-Bone eine Option
-    for bone, tireIndex in pairs(boneToTireIndex) do
-        local label = boneToTireLabel[bone]
-        local capturedBone  = bone
-        local capturedIndex = tireIndex
-        local capturedLabel = label
-
-        options[#options + 1] = {
-            name        = 'fd_tire_' .. capturedBone,
-            icon        = 'fas fa-circle-notch',
-            label       = capturedLabel .. ' abschneiden',
-            bones       = { capturedBone },
-            distance    = dist,
-            onSelect    = function()
-                RemoveTireByIndex(vehicle, capturedIndex, capturedLabel)
-            end,
-            canInteract = function()
-                return FD.HasJob()
-                    and not FD.State.Get(vehicle, 'extrication', 'tire', capturedIndex)
-                    and tireIndex < GetVehicleNumberOfWheels(vehicle)
-            end,
-        }
-    end
-
-    -- Dach – auf Windschutzscheibe / Dach-Bone
-    options[#options + 1] = {
-        name        = 'fd_roof_remove',
-        icon        = 'fas fa-cut',
-        label       = 'Dach aufschneiden',
-        bones       = { 'windscreen_f', 'roof_f' },
-        distance    = dist,
-        onSelect    = function() RemoveRoof(vehicle) end,
-        canInteract = function()
-            return FD.HasJob()
-                and not FD.State.Get(vehicle, 'extrication', 'roof')
-        end,
+    return {
+        {
+            name        = 'fd_extrication',
+            icon        = Config.Target.icon,
+            label       = 'Fahrzeugbefreiung',
+            distance    = Config.Target.distance,
+            onSelect    = function() OpenExtricationMenu(vehicle) end,
+            canInteract = function() return FD.HasJob() end,
+        },
     }
-
-    -- Airbag – auf Lenkrad / Fahrersitz-Bone
-    options[#options + 1] = {
-        name        = 'fd_airbag',
-        icon        = 'fas fa-wind',
-        label       = T('airbag_deactivate'),
-        bones       = { 'steering_wheel', 'seat_dside_f' },
-        distance    = dist,
-        onSelect    = function() DeactivateAirbag(vehicle) end,
-        canInteract = function()
-            return FD.HasJob()
-                and not FD.State.Get(vehicle, 'extrication', 'airbag')
-        end,
-    }
-
-    -- Stabilisieren – auf Chassis / Unterseite
-    options[#options + 1] = {
-        name        = 'fd_stabilize',
-        icon        = 'fas fa-car-crash',
-        label       = 'Fahrzeug stabilisieren',
-        bones       = { 'chassis', 'chassis_dummy' },
-        distance    = dist,
-        onSelect    = function() StabilizeVehicle(vehicle) end,
-        canInteract = function()
-            return FD.HasJob()
-                and not FD.State.Get(vehicle, 'extrication', 'stabilized')
-        end,
-    }
-
-    options[#options + 1] = {
-        name        = 'fd_destabilize',
-        icon        = 'fas fa-unlock',
-        label       = 'Stabilisierung lösen',
-        bones       = { 'chassis', 'chassis_dummy' },
-        distance    = dist,
-        onSelect    = function() DestabilizeVehicle(vehicle) end,
-        canInteract = function()
-            return FD.HasJob()
-                and FD.State.Get(vehicle, 'extrication', 'stabilized') == true
-        end,
-    }
-
-    return options
 end
 
 -- ─────────────────────────────────────────────
---  Scan Thread – optimiert
+--  Scan Thread
 -- ─────────────────────────────────────────────
 
 CreateThread(function()
-    Config.Extrication  = Config.Extrication  or { onlyWrecked = false }
+    Config.Extrication    = Config.Extrication    or { onlyWrecked = false }
     Config.PlayerVehicles = Config.PlayerVehicles or { enabled = true }
     Wait(500)
 
     while FD.ModuleEnabled('Extrication') do
 
-        -- Kein FD-Job → langsam scannen, Targets räumen
         if not FD.HasJob() then
             if next(activeTargets) then
                 for vehicle in pairs(activeTargets) do
@@ -434,7 +336,6 @@ CreateThread(function()
         do
             local pCoords = GetEntityCoords(PlayerPedId())
 
-            -- Hilfsfunktion: Fahrzeug registrieren wenn alle Checks bestehen
             local function TryRegisterVehicle(vehicle)
                 if activeTargets[vehicle] then return end
                 if not DoesEntityExist(vehicle) then return end
@@ -442,37 +343,28 @@ CreateThread(function()
                 if Config.Extrication.onlyWrecked and not IsVehicleWrecked(vehicle) then return end
 
                 if Config.PlayerVehicles.enabled then
-                    -- Synchroner Check: Cache-Treffer oder nil (noch unbekannt)
                     local known = FD.IsPlayerVehicle(vehicle)
-
-                    if known == false then return end   -- sicher kein Spieler-Fahrzeug
-
+                    if known == false then return end
                     if known == nil then
-                        -- Cache noch leer → async nachladen, diesmal überspringen
                         FD.PrefetchVehicle(vehicle, function(isPlayer)
                             if isPlayer and not activeTargets[vehicle] and DoesEntityExist(vehicle) then
                                 exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
                                 activeTargets[vehicle] = true
-                                FD.Debug('Target nachregistriert (async): Fahrzeug %d', vehicle)
+                                FD.Debug('target', 'Target nachregistriert (async): Fahrzeug %d', vehicle)
                             end
                         end)
                         return
                     end
                 end
 
-                -- Alle Checks bestanden → Target setzen
                 exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
                 activeTargets[vehicle] = true
-                FD.Debug('Target gesetzt: Fahrzeug %d', vehicle)
+                FD.Debug('target', 'Target gesetzt: Fahrzeug %d', vehicle)
             end
 
-            -- Primär: GetClosestVehicle (günstig)
             local closest = GetClosestVehicle(pCoords.x, pCoords.y, pCoords.z, 30.0, 0, 70)
-            if closest and closest ~= 0 then
-                TryRegisterVehicle(closest)
-            end
+            if closest and closest ~= 0 then TryRegisterVehicle(closest) end
 
-            -- Sekundär: GetGamePool nur wenn aktive Szene vorhanden
             if next(activeTargets) then
                 local pool = GetGamePool('CVehicle')
                 for i, vehicle in ipairs(pool) do
@@ -481,7 +373,6 @@ CreateThread(function()
                 end
             end
 
-            -- Cleanup: weg oder zu weit
             for vehicle in pairs(activeTargets) do
                 local gone = not DoesEntityExist(vehicle)
                 local far  = not gone and #(pCoords - GetEntityCoords(vehicle)) > 40.0

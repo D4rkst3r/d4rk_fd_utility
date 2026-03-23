@@ -20,7 +20,7 @@ local function LoadKnownPlates()
         for _, row in ipairs(rows or {}) do
             knownPlates[row.plate] = true
         end
-        FD.Debug('Bekannte Plates geladen: %d', (function()
+        FD.Debug('vehicle', 'Bekannte Plates geladen: %d', (function()
             local n = 0
             for _ in pairs(knownPlates) do n = n + 1 end
             return n
@@ -52,7 +52,7 @@ lib.callback.register('d4rk_fd_utility:cb_isPlayerVehicle', function(source, pla
     local isPlayer = result ~= nil and result ~= false
 
     pvCache[plate] = { result = isPlayer, ttl = GetGameTimer() + PV_CACHE_TTL }
-    FD.Debug('cb_isPlayerVehicle: %s → %s [%s.%s]', plate, tostring(isPlayer), tbl, col)
+    FD.Debug('vehicle', 'cb_isPlayerVehicle: %s → %s [%s.%s]', plate, tostring(isPlayer), tbl, col)
     return isPlayer
 end)
 
@@ -161,7 +161,7 @@ function VehicleState.Apply(vehicle, cb)
             ApplyStateBag(vehicle, fullKey, value)
             count = count + 1
         end
-        if count > 0 then FD.Debug('States angewendet: %s (%d Keys)', plate, count) end
+        if count > 0 then FD.Debug('vehicle', 'States angewendet: %s (%d Keys)', plate, count) end
         if cb then cb(true, states) end
     end)
 end
@@ -201,7 +201,7 @@ RegisterNetEvent('d4rk_fd_utility:sv_setState', function(netVehicle, fullKey, va
     if not plate then return end
     VehicleState.Set(plate, fullKey, value)
     ApplyStateBag(vehicle, fullKey, value)
-    FD.Debug('sv_setState: %s | %s = %s (Player %d)', plate, fullKey, tostring(value), source)
+    FD.Debug('state', 'sv_setState: %s | %s = %s (Player %d)', plate, fullKey, tostring(value), source)
 end)
 
 RegisterNetEvent('d4rk_fd_utility:sv_clearState', function(netVehicle)

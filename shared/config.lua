@@ -7,7 +7,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 --  Framework & Integrations
 -- ─────────────────────────────────────────────
-Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
+Config.Framework     = 'standalone'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
 Config.Debug         = true         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
@@ -238,5 +238,5 @@ Config.Props = {
 -- ─────────────────────────────────────────────
 Config.Target = {
     icon     = 'fas fa-fire-extinguisher',
-    distance = 2.0,
+    distance = 4.0,
 }

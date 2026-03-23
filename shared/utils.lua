@@ -8,12 +8,99 @@ FD._schemas = FD._schemas or {}
 FD._cache   = FD._cache   or {}
 
 -- ─────────────────────────────────────────────
---  Debug
+--  Debug System
+--  Kategorien ein/aus schaltbar
+--  In-Game: /fdebug <kategorie> oder /fdebug all
 -- ─────────────────────────────────────────────
 
-function FD.Debug(msg, ...)
-    if not Config.Debug then return end
-    print(('[^3d4rk_fd_utility^7] ' .. msg):format(...))
+FD._debug = {
+    enabled    = Config.Debug,   -- Master-Switch aus config.lua
+    categories = {
+        general     = true,   -- Allgemeine Meldungen
+        state       = true,   -- State Set/Get Operationen
+        target      = true,   -- ox_target Registrierungen
+        vehicle     = true,   -- Fahrzeug-Checks (PlayerVehicle, Spawn)
+        job         = false,  -- Job/Grade Checks (sehr häufig, standardmäßig aus)
+        inventory   = true,   -- Item Checks
+        props       = true,   -- Prop Spawn/Despawn
+        extrication = true,   -- Extrication Aktionen
+        hazmat      = true,
+        scene       = true,
+    }
+}
+
+---@param category string  Kategorie aus FD._debug.categories
+---@param msg      string
+---@param ...      any
+function FD.Debug(category, msg, ...)
+    if not FD._debug.enabled then return end
+    if FD._debug.categories[category] == false then return end
+
+    local prefix = ('[^3d4rk_fd_utility^7][^5%s^7] '):format(category)
+    print((prefix .. msg):format(...))
+end
+
+-- Rückwärts-kompatibel: FD.Debug('msg') ohne Kategorie → general
+local _origDebug = FD.Debug
+FD.Debug = function(categoryOrMsg, msg, ...)
+    if FD._debug.categories[categoryOrMsg] ~= nil then
+        _origDebug(categoryOrMsg, msg, ...)
+    else
+        -- Alte Aufrufe ohne Kategorie
+        _origDebug('general', categoryOrMsg, msg, ...)
+    end
+end
+
+-- ─────────────────────────────────────────────
+--  In-Game Debug Toggle (Client-seitig)
+-- ─────────────────────────────────────────────
+
+if not IsDuplicityVersion then
+    -- /fdebug                  → Status anzeigen
+    -- /fdebug on|off           → Master an/aus
+    -- /fdebug <kategorie>      → Kategorie togglen
+    -- /fdebug all on|off       → alle Kategorien an/aus
+    RegisterCommand('fdebug', function(_, args)
+        if not args[1] then
+            -- Status anzeigen
+            local status = FD._debug.enabled and '^2AN^7' or '^1AUS^7'
+            print(('[d4rk_fd_utility] Debug: %s'):format(status))
+            for cat, active in pairs(FD._debug.categories) do
+                local s = active and '^2✓^7' or '^1✗^7'
+                print(('  %s %s'):format(s, cat))
+            end
+            return
+        end
+
+        local arg1 = args[1]:lower()
+
+        if arg1 == 'on' then
+            FD._debug.enabled = true
+            print('^2[d4rk_fd_utility] Debug aktiviert^7')
+
+        elseif arg1 == 'off' then
+            FD._debug.enabled = false
+            print('^1[d4rk_fd_utility] Debug deaktiviert^7')
+
+        elseif arg1 == 'all' then
+            local val = args[2] and args[2]:lower() == 'on'
+            for cat in pairs(FD._debug.categories) do
+                FD._debug.categories[cat] = val
+            end
+            print(('[d4rk_fd_utility] Alle Kategorien: %s'):format(val and '^2AN^7' or '^1AUS^7'))
+
+        elseif FD._debug.categories[arg1] ~= nil then
+            FD._debug.categories[arg1] = not FD._debug.categories[arg1]
+            local s = FD._debug.categories[arg1] and '^2AN^7' or '^1AUS^7'
+            print(('[d4rk_fd_utility] Kategorie "%s": %s'):format(arg1, s))
+
+        else
+            print('[d4rk_fd_utility] Unbekannte Kategorie. Verfügbar:')
+            for cat in pairs(FD._debug.categories) do
+                print('  ' .. cat)
+            end
+        end
+    end, false)
 end
 
 -- ─────────────────────────────────────────────
@@ -75,7 +162,7 @@ local function GetBridge()
         }
     end
 
-    FD.Debug('Framework Bridge geladen: %s', fw)
+    FD.Debug('general', 'Framework Bridge geladen: %s', fw)
     return _bridge
 end
 
@@ -84,17 +171,17 @@ if not IsDuplicityVersion then
     -- QBX-Core
     AddEventHandler('QBX:Player:SetPlayerData', function()
         _bridge = nil
-        FD.Debug('Bridge reset (QBX PlayerData Update)')
+        FD.Debug('job', 'Bridge reset (QBX PlayerData Update)')
     end)
     -- QB-Core
     AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
         _bridge = nil
-        FD.Debug('Bridge reset (QB OnPlayerLoaded)')
+        FD.Debug('job', 'Bridge reset (QB OnPlayerLoaded)')
     end)
     -- ESX
     AddEventHandler('esx:playerLoaded', function()
         _bridge = nil
-        FD.Debug('Bridge reset (ESX playerLoaded)')
+        FD.Debug('job', 'Bridge reset (ESX playerLoaded)')
     end)
 end
 
@@ -117,7 +204,7 @@ local function InvalidateJobCache()
     _jobCache.grade  = nil
     _jobCache.name   = nil
     _jobCache.ttl    = 0
-    FD.Debug('Job Cache invalidiert')
+    FD.Debug('job', 'Job Cache invalidiert')
 end
 
 local function RefreshJobCache()
@@ -405,7 +492,7 @@ function FD.SpawnProp(model, coords, heading, category)
     SetModelAsNoLongerNeeded(hash)
 
     table.insert(spawnedProps[category], { obj = obj, coords = coords })
-    FD.Debug('Prop gespawnt: %s (Kategorie: %s, %d/%d)', model, category, #spawnedProps[category], limit)
+    FD.Debug('props', 'Prop gespawnt: %s (Kategorie: %s, %d/%d)', model, category, #spawnedProps[category], limit)
     return obj
 end
 

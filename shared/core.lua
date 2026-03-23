@@ -33,11 +33,11 @@ FD._cache   = {}   -- lokaler State Cache  { [netId]  = { [fullKey] = value } }
 ---@param schema table
 function FD.RegisterStateSchema(module, schema)
     if FD._schemas[module] then
-        FD.Debug('Schema überschrieben: %s', module)
+        FD.Debug('general', 'Schema überschrieben: %s', module)
     end
 
     FD._schemas[module] = schema
-    FD.Debug('Schema registriert: %s (%d Keys)', module, (function()
+    FD.Debug('general', 'Schema registriert: %s (%d Keys)', module, (function()
         local n = 0
         for _ in pairs(schema) do n = n + 1 end
         return n
@@ -92,22 +92,22 @@ end
 ---@param index   number|nil  für indexed Keys (Türen, Reifen usw.)
 ---@param value   any
 function FD.State.Set(vehicle, module, key, index, value)
-    -- Schema validieren
     local schema = FD._schemas[module]
     if not schema or not schema[key] then
-        FD.Debug('Unbekannter State Key: %s.%s', module, key)
+        FD.Debug('state', 'Unbekannter State Key: %s.%s', module, key)
+        return
+    end
+
+    local netId = VehToNet(vehicle)
+    if netId == 0 then
+        FD.Debug('state', 'State.Set abgebrochen: kein Netzwerk-Objekt für Fahrzeug %d', vehicle)
         return
     end
 
     local fullKey = FD.State.BuildKey(module, key, index)
-    local netId   = VehToNet(vehicle)
-
-    -- Lokalen Cache updaten
     CacheSet(netId, fullKey, value)
-
-    -- An Server schicken → DB + State Bags für alle
     TriggerServerEvent('d4rk_fd_utility:sv_setState', netId, fullKey, value)
-    FD.Debug('State.Set: %s = %s (NetID %d)', fullKey, tostring(value), netId)
+    FD.Debug('state', 'State.Set: %s = %s (NetID %d)', fullKey, tostring(value), netId)
 end
 
 -- ─────────────────────────────────────────────
@@ -190,7 +190,7 @@ function FD._RegisterStateBagHandlers(module, schema)
 
                         -- Callback ausführen
                         capturedDef.onApply(vehicle, capturedIndex, value)
-                        FD.Debug('StateBag → %s = %s (Fahrzeug %d)', fullKey, tostring(value), vehicle)
+                        FD.Debug('state', 'StateBag → %s = %s (Fahrzeug %d)', fullKey, tostring(value), vehicle)
                     end)
                 end
             else
@@ -206,13 +206,13 @@ function FD._RegisterStateBagHandlers(module, schema)
                     CacheSet(netId, fullKey, value)
 
                     capturedDef.onApply(vehicle, nil, value)
-                    FD.Debug('StateBag → %s = %s (Fahrzeug %d)', fullKey, tostring(value), vehicle)
+                    FD.Debug('state', 'StateBag → %s = %s (Fahrzeug %d)', fullKey, tostring(value), vehicle)
                 end)
             end
         end
     end
 
-    FD.Debug('StateBag Handler registriert für Modul: %s', module)
+    FD.Debug('general', 'StateBag Handler registriert für Modul: %s', module)
 end
 
 -- ─────────────────────────────────────────────
@@ -226,7 +226,7 @@ if not IsDuplicityVersion then
                 local vehicle = NetToVeh(netId)
                 if not DoesEntityExist(vehicle) then
                     FD._cache[netId] = nil
-                    FD.Debug('Cache bereinigt: NetID %d', netId)
+                    FD.Debug('state', 'Cache bereinigt: NetID %d', netId)
                 end
             end
         end
