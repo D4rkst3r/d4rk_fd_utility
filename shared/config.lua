@@ -9,7 +9,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
-Config.Debug         = true         -- Debug-Prints in der Console
+Config.Debug         = false         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
 
 Config.UseTarget     = true          -- ox_target für Interaktionen
@@ -179,6 +179,7 @@ Config.Cooldowns = {
     oilPlace     = 3000,
     conePlace    = 1500,
     barrierPlace = 2000,
+    lightPlace   = 3000,
     extract      = 10000,
     triage       = 2000,
 }
@@ -192,6 +193,26 @@ Config.Limits = {
     lightstands  = 4,
     oilPatches   = 6,
     fireSigns    = 6,
+    flares       = 8,
+}
+
+-- ─────────────────────────────────────────────
+--  Scene Management Konfiguration
+-- ─────────────────────────────────────────────
+Config.Scene = {
+    -- Abstand vor dem Spieler beim Platzieren (Meter)
+    placeDistance  = 2.5,
+
+    -- Lichtmast: Lichtfarbe (RGB)
+    lightColor     = { r = 255, g = 220, b = 150 },
+    lightIntensity = 10.0,
+    lightRange     = 15.0,
+
+    -- Prop-Rotation beim Platzieren in Spieler-Heading-Richtung
+    alignToPlayer  = true,
+
+    -- Radial-Menü Keybind (ox_lib)
+    radialKey      = 'F5',
 }
 
 -- ─────────────────────────────────────────────
@@ -224,13 +245,19 @@ Config.Anims = {
 --  Props (Modelle)
 -- ─────────────────────────────────────────────
 Config.Props = {
+    -- Extrication
+    wheel         = 'prop_byard_tyres_01',
+
+    -- Scene Management
     cone          = 'prop_mp_cone_01',
-    barrierPost   = 'prop_barrier_wat_03a',
+    coneBig       = 'prop_mp_cone_04',
+    barrier       = 'prop_barrier_wat_03a',
+    barrierLong   = 'prop_barrier_wat_04a',
     lightstand    = 'prop_worklight_03a',
-    oilPatch      = 'prop_oil_slick_01',
+    lightstandBig = 'prop_worklight_04a',
     warningSign   = 'prop_mp_arrow_barrier_01',
     flare         = 'prop_flare_01',
-    wheel         = 'prop_air_chock_04',  -- Stabilisierungs-Keil
+    oilPatch      = 'prop_oil_slick_01',
 }
 
 -- ─────────────────────────────────────────────
