@@ -6,7 +6,6 @@ if not FD.ModuleEnabled('Scene') then return end
 
 -- ─────────────────────────────────────────────
 --  Lokaler Status
---  Netzwerk-Objekte damit alle Spieler sie sehen
 -- ─────────────────────────────────────────────
 
 -- { category = { { obj, netId } } }
@@ -17,8 +16,26 @@ local sceneProps = {
     flares      = {},
 }
 
--- Licht-Handles für Lichtmaste
-local lightHandles = {}
+-- Lichtmast-Threads aktiv halten
+local lightActive = {}   -- { [obj] = true }
+
+-- ─────────────────────────────────────────────
+--  Cooldown-Key Mapping (Kategorie → Config.Cooldowns Key)
+-- ─────────────────────────────────────────────
+
+local categoryCooldown = {
+    cones       = 'conePlace',
+    barriers    = 'barrierPlace',
+    lightstands = 'lightPlace',
+    flares      = 'conePlace',
+}
+
+local categoryProgressTime = {
+    cones       = 1500,
+    barriers    = 2000,
+    lightstands = 4000,
+    flares      = 1000,
+}
 
 -- ─────────────────────────────────────────────
 --  Helpers
@@ -33,7 +50,6 @@ local function GetPlaceCoords()
     local x = coords.x + dist * math.sin(-math.rad(heading))
     local y = coords.y + dist * math.cos(-math.rad(heading))
 
-    -- Boden-Z finden
     local found, z = GetGroundZFor_3dCoord(x, y, coords.z + 2.0, false)
     if not found then z = coords.z end
 
@@ -50,34 +66,13 @@ local function SpawnNetworkProp(model, coords, heading)
     FreezeEntityPosition(obj, true)
     SetModelAsNoLongerNeeded(hash)
 
-    -- Als Netzwerk-Objekt setzen damit andere Spieler es sehen
     local netId = ObjToNet(obj)
     SetNetworkIdExistsOnAllMachines(netId, true)
 
     return obj, netId
 end
 
-local function RemovePropFromCategory(category, obj)
-    for i, entry in ipairs(sceneProps[category]) do
-        if entry.obj == obj then
-            -- Licht entfernen falls Lichtmast
-            if lightHandles[obj] then
-                RemoveLightHandle(lightHandles[obj])
-                lightHandles[obj] = nil
-            end
-            -- ox_target entfernen
-            exports.ox_target:removeLocalEntity(obj)
-            -- Prop löschen
-            if DoesEntityExist(obj) then DeleteObject(obj) end
-            table.remove(sceneProps[category], i)
-            return true
-        end
-    end
-    return false
-end
-
 local function CountProps(category)
-    -- Ungültige Props aufräumen
     local valid = {}
     for _, entry in ipairs(sceneProps[category]) do
         if DoesEntityExist(entry.obj) then
@@ -88,38 +83,86 @@ local function CountProps(category)
     return #valid
 end
 
-local function AddLightToStand(obj)
-    local c = Config.Scene.lightColor
-    local handle = AddLightToRendertarget and nil or nil
+-- Alle Props zählen für Statusanzeige
+local function GetAllCounts()
+    return {
+        cones       = CountProps('cones'),
+        barriers    = CountProps('barriers'),
+        lightstands = CountProps('lightstands'),
+        flares      = CountProps('flares'),
+    }
+end
 
-    -- GTA native Licht
+local function RemovePropFromCategory(category, obj)
+    for i, entry in ipairs(sceneProps[category]) do
+        if entry.obj == obj then
+            lightActive[obj] = nil
+            exports.ox_target:removeLocalEntity(obj)
+            if DoesEntityExist(obj) then DeleteObject(obj) end
+            table.remove(sceneProps[category], i)
+            FD.Debug('scene', 'Prop entfernt aus %s (Handle %d)', category, obj)
+            return true
+        end
+    end
+    return false
+end
+
+-- Lichtmast: Licht via DrawLightWithRange – läuft in einem
+-- zentralen Thread statt einem Thread pro Mast
+local lightThread = false
+
+local function EnsureLightThread()
+    if lightThread then return end
+    lightThread = true
     CreateThread(function()
-        while DoesEntityExist(obj) do
-            local coords = GetEntityCoords(obj)
-            DrawLightWithRange(
-                coords.x, coords.y, coords.z + 2.0,
-                c.r, c.g, c.b,
-                Config.Scene.lightRange,
-                Config.Scene.lightIntensity
-            )
+        while lightThread do
+            local any = false
+            for obj in pairs(lightActive) do
+                if DoesEntityExist(obj) then
+                    any = true
+                    local c = Config.Scene.lightColor
+                    local pos = GetEntityCoords(obj)
+                    DrawLightWithRange(
+                        pos.x, pos.y, pos.z + 2.5,
+                        c.r, c.g, c.b,
+                        Config.Scene.lightRange,
+                        Config.Scene.lightIntensity
+                    )
+                else
+                    lightActive[obj] = nil
+                end
+            end
+            if not any then
+                lightThread = false
+                return
+            end
             Wait(0)
         end
     end)
 end
 
 -- ─────────────────────────────────────────────
---  Prop-Platzierung mit ox_target zum Aufheben
+--  Prop-Platzierung
 -- ─────────────────────────────────────────────
 
-local function PlacePropWithTarget(model, category, label, onPlace)
-    local limit = Config.Limits[category] or 10
+local function PlacePropWithTarget(model, category, label, cooldownKey, item, withLight)
+    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
+    if item and not FD.HasItem(item) then FD.Notify(T('no_item'), 'error') return end
 
+    local cdKey = 'scene_' .. category
+    if not FD.CheckCooldown(cdKey) then FD.Notify(T('cooldown'), 'warning') return end
+
+    local limit = Config.Limits[category] or 10
     if CountProps(category) >= limit then
         FD.Notify(('%s Limit erreicht (%d/%d)'):format(label, limit, limit), 'warning')
         return
     end
 
-    local done = FD.Progress(('Stelle %s auf'):format(label), 'place', Config.Cooldowns[category .. 'Place'] or 2000)
+    local done = FD.Progress(
+        ('Stelle %s auf'):format(label),
+        'place',
+        categoryProgressTime[category] or 2000
+    )
     if not done then return end
 
     local coords, heading = GetPlaceCoords()
@@ -127,103 +170,34 @@ local function PlacePropWithTarget(model, category, label, onPlace)
 
     sceneProps[category][#sceneProps[category] + 1] = { obj = obj, netId = netId }
 
-    -- Callback für spezielle Aktionen (z.B. Licht)
-    if onPlace then onPlace(obj) end
+    -- Lichtmast: zentralen Light-Thread starten
+    if withLight then
+        lightActive[obj] = true
+        EnsureLightThread()
+    end
 
-    -- ox_target auf das Prop zum Aufheben
+    -- ox_target zum Aufheben
     exports.ox_target:addLocalEntity(obj, {
         {
-            name     = 'fd_scene_remove_' .. tostring(obj),
-            icon     = 'fas fa-times',
+            name     = 'fd_pickup_' .. tostring(obj),
+            icon     = 'fas fa-hand',
             label    = label .. ' aufheben',
             distance = 2.5,
             onSelect = function()
                 RemovePropFromCategory(category, obj)
+                if item then FD.RemoveItem(item, -1) end  -- Item zurückgeben wenn consumable = false
                 FD.Notify(label .. ' aufgehoben.', 'inform')
-                FD.Debug('scene', '%s aufgehoben (Kategorie: %s)', label, category)
             end,
             canInteract = function() return FD.HasJob() end,
         }
     })
 
+    FD.SetCooldown(cdKey, cooldownKey)
+    if item then FD.RemoveItem(item, 1) end
     FD.Notify(label .. ' aufgestellt.', 'success')
-    FD.Debug('scene', '%s platziert bei %s (NetID %d)', label, tostring(coords), netId)
+    FD.Debug('scene', '%s platziert | NetID %d | Pos %s', label, netId, tostring(coords))
 
     return obj
-end
-
--- ─────────────────────────────────────────────
---  Einzelne Platzier-Funktionen
--- ─────────────────────────────────────────────
-
-local function PlaceCone(big)
-    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if not FD.HasItem('trafficcone') then FD.Notify(T('no_item'), 'error') return end
-    if not FD.CheckCooldown('scene_cone') then FD.Notify(T('cooldown'), 'warning') return end
-
-    local model = big and Config.Props.coneBig or Config.Props.cone
-    PlacePropWithTarget(model, 'cones', 'Verkehrskegel')
-    FD.SetCooldown('scene_cone', 'conePlace')
-    FD.RemoveItem('trafficcone', 1)
-end
-
-local function PlaceBarrier(long)
-    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if not FD.HasItem('safetybarrier') then FD.Notify(T('no_item'), 'error') return end
-    if not FD.CheckCooldown('scene_barrier') then FD.Notify(T('cooldown'), 'warning') return end
-
-    local model = long and Config.Props.barrierLong or Config.Props.barrier
-    PlacePropWithTarget(model, 'barriers', 'Absperrung')
-    FD.SetCooldown('scene_barrier', 'barrierPlace')
-    FD.RemoveItem('safetybarrier', 1)
-end
-
-local function PlaceLightStand(big)
-    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if not FD.HasItem('lightstand') then FD.Notify(T('no_item'), 'error') return end
-    if not FD.CheckCooldown('scene_light') then FD.Notify(T('cooldown'), 'warning') return end
-
-    local model = big and Config.Props.lightstandBig or Config.Props.lightstand
-    PlacePropWithTarget(model, 'lightstands', 'Lichtmast', function(obj)
-        AddLightToStand(obj)
-    end)
-    FD.SetCooldown('scene_light', 'lightPlace')
-    FD.RemoveItem('lightstand', 1)
-end
-
-local function PlaceFlare()
-    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if not FD.CheckCooldown('scene_flare') then FD.Notify(T('cooldown'), 'warning') return end
-
-    local coords, heading = GetPlaceCoords()
-    local obj, netId      = SpawnNetworkProp(Config.Props.flare, coords, heading)
-
-    sceneProps.flares[#sceneProps.flares + 1] = { obj = obj, netId = netId }
-
-    exports.ox_target:addLocalEntity(obj, {
-        {
-            name     = 'fd_scene_remove_flare_' .. tostring(obj),
-            icon     = 'fas fa-times',
-            label    = 'Fackel aufheben',
-            distance = 2.5,
-            onSelect = function()
-                RemovePropFromCategory('flares', obj)
-                FD.Notify('Fackel aufgehoben.', 'inform')
-            end,
-            canInteract = function() return FD.HasJob() end,
-        }
-    })
-
-    FD.SetCooldown('scene_flare', 'conePlace')
-    FD.Notify('Fackel platziert.', 'success')
-end
-
-local function PlaceWarningSign()
-    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if not FD.CheckCooldown('scene_sign') then FD.Notify(T('cooldown'), 'warning') return end
-
-    PlacePropWithTarget(Config.Props.warningSign, 'barriers', 'Warnzeichen')
-    FD.SetCooldown('scene_sign', 'barrierPlace')
 end
 
 -- ─────────────────────────────────────────────
@@ -235,9 +209,7 @@ local function ClearAllScene()
     for category, props in pairs(sceneProps) do
         for _, entry in ipairs(props) do
             if DoesEntityExist(entry.obj) then
-                if lightHandles[entry.obj] then
-                    lightHandles[entry.obj] = nil
-                end
+                lightActive[entry.obj] = nil
                 exports.ox_target:removeLocalEntity(entry.obj)
                 DeleteObject(entry.obj)
                 total = total + 1
@@ -245,80 +217,110 @@ local function ClearAllScene()
         end
         sceneProps[category] = {}
     end
-    FD.Debug('scene', 'Szene geräumt: %d Props entfernt', total)
+    lightThread = false
+    FD.Debug('scene', 'Szene geräumt: %d Props', total)
     return total
 end
 
 -- ─────────────────────────────────────────────
---  Szenen-Übersicht Menü
+--  Szenen-Menü
 -- ─────────────────────────────────────────────
 
 local function OpenSceneMenu()
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
 
+    -- Einmal zählen, nicht pro Option
+    local counts = GetAllCounts()
+
     local options = {
         -- ── Kegel ────────────────────────────
         {
-            title       = T('cone_place'),
-            description = ('Platziert %d/%d'):format(CountProps('cones'), Config.Limits.cones),
+            title       = 'Kegel aufstellen',
+            description = ('Platziert: %d/%d'):format(counts.cones, Config.Limits.cones),
             icon        = 'fas fa-traffic-cone',
-            arrow       = true,
-            onSelect    = function() PlaceCone(false) end,
+            disabled    = counts.cones >= Config.Limits.cones,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.cone, 'cones', 'Verkehrskegel', 'conePlace', 'trafficcone')
+            end,
         },
         {
             title       = 'Großen Kegel aufstellen',
-            description = ('Platziert %d/%d'):format(CountProps('cones'), Config.Limits.cones),
+            description = ('Platziert: %d/%d'):format(counts.cones, Config.Limits.cones),
             icon        = 'fas fa-traffic-cone',
-            onSelect    = function() PlaceCone(true) end,
+            disabled    = counts.cones >= Config.Limits.cones,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.coneBig, 'cones', 'Großer Kegel', 'conePlace', 'trafficcone')
+            end,
         },
 
         -- ── Absperrung ───────────────────────
         {
-            title       = T('barrier_place'),
-            description = ('Platziert %d/%d'):format(CountProps('barriers'), Config.Limits.barriers),
+            title       = 'Absperrung aufstellen',
+            description = ('Platziert: %d/%d'):format(counts.barriers, Config.Limits.barriers),
             icon        = 'fas fa-do-not-enter',
-            onSelect    = function() PlaceBarrier(false) end,
+            disabled    = counts.barriers >= Config.Limits.barriers,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.barrier, 'barriers', 'Absperrung', 'barrierPlace', 'safetybarrier')
+            end,
         },
         {
             title       = 'Lange Absperrung aufstellen',
-            description = ('Platziert %d/%d'):format(CountProps('barriers'), Config.Limits.barriers),
+            description = ('Platziert: %d/%d'):format(counts.barriers, Config.Limits.barriers),
             icon        = 'fas fa-do-not-enter',
-            onSelect    = function() PlaceBarrier(true) end,
+            disabled    = counts.barriers >= Config.Limits.barriers,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.barrierLong, 'barriers', 'Lange Absperrung', 'barrierPlace', 'safetybarrier')
+            end,
         },
         {
             title       = 'Warnzeichen aufstellen',
-            description = ('Platziert %d/%d'):format(CountProps('barriers'), Config.Limits.barriers),
+            description = ('Platziert: %d/%d'):format(counts.barriers, Config.Limits.barriers),
             icon        = 'fas fa-triangle-exclamation',
-            onSelect    = function() PlaceWarningSign() end,
+            disabled    = counts.barriers >= Config.Limits.barriers,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.warningSign, 'barriers', 'Warnzeichen', 'barrierPlace', nil)
+            end,
         },
 
-        -- ── Licht ────────────────────────────
+        -- ── Lichtmast ────────────────────────
         {
-            title       = T('light_place'),
-            description = ('Platziert %d/%d'):format(CountProps('lightstands'), Config.Limits.lightstands),
+            title       = 'Lichtmast aufstellen',
+            description = ('Platziert: %d/%d'):format(counts.lightstands, Config.Limits.lightstands),
             icon        = 'fas fa-lightbulb',
-            onSelect    = function() PlaceLightStand(false) end,
+            disabled    = counts.lightstands >= Config.Limits.lightstands,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.lightstand, 'lightstands', 'Lichtmast', 'lightPlace', 'lightstand', true)
+            end,
         },
         {
             title       = 'Großen Lichtmast aufstellen',
-            description = ('Platziert %d/%d'):format(CountProps('lightstands'), Config.Limits.lightstands),
+            description = ('Platziert: %d/%d'):format(counts.lightstands, Config.Limits.lightstands),
             icon        = 'fas fa-lightbulb',
-            onSelect    = function() PlaceLightStand(true) end,
+            disabled    = counts.lightstands >= Config.Limits.lightstands,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.lightstandBig, 'lightstands', 'Großer Lichtmast', 'lightPlace', 'lightstand', true)
+            end,
         },
 
         -- ── Fackel ───────────────────────────
         {
             title       = 'Fackel platzieren',
-            description = ('Platziert %d/%d'):format(CountProps('flares'), Config.Limits.flares),
+            description = ('Platziert: %d/%d'):format(counts.flares, Config.Limits.flares),
             icon        = 'fas fa-fire',
-            onSelect    = function() PlaceFlare() end,
+            disabled    = counts.flares >= Config.Limits.flares,
+            onSelect    = function()
+                PlacePropWithTarget(Config.Props.flare, 'flares', 'Fackel', 'conePlace', nil)
+            end,
         },
 
         -- ── Räumen ───────────────────────────
         {
             title       = 'Eigene Szene räumen',
-            description = 'Alle eigenen Props entfernen',
+            description = ('Gesamt: %d Props'):format(
+                counts.cones + counts.barriers + counts.lightstands + counts.flares
+            ),
             icon        = 'fas fa-trash',
+            disabled    = (counts.cones + counts.barriers + counts.lightstands + counts.flares) == 0,
             onSelect    = function()
                 local count = ClearAllScene()
                 FD.Notify(('Szene geräumt – %d Props entfernt.'):format(count), 'inform')
@@ -335,32 +337,14 @@ end
 -- ─────────────────────────────────────────────
 
 lib.addRadialItem({
-    id      = 'fd_scene_radial',
-    label   = 'Szene',
-    icon    = 'fas fa-fire-extinguisher',
-    onSelect = function()
-        OpenSceneMenu()
-    end,
+    id       = 'fd_scene_radial',
+    label    = 'Szene',
+    icon     = 'fas fa-traffic-cone',
+    onSelect = function() OpenSceneMenu() end,
 })
 
 -- ─────────────────────────────────────────────
---  ox_target auf Boden – Schnellzugriff
--- ─────────────────────────────────────────────
-
--- Globale Ground-Zone für schnelles Platzieren
-exports.ox_target:addGlobalPed({
-    {
-        name        = 'fd_scene_open',
-        icon        = 'fas fa-traffic-cone',
-        label       = 'Szene einrichten',
-        distance    = 1.5,
-        onSelect    = function() OpenSceneMenu() end,
-        canInteract = function() return FD.HasJob() end,
-    }
-})
-
--- ─────────────────────────────────────────────
---  Admin Befehl: /fdscene
+--  Befehle
 -- ─────────────────────────────────────────────
 
 RegisterCommand('fdscene', function(_, args)
@@ -368,15 +352,15 @@ RegisterCommand('fdscene', function(_, args)
         OpenSceneMenu()
         return
     end
-
     if args[1] == 'clear' then
         local count = ClearAllScene()
         FD.Notify(('Szene geräumt – %d Props entfernt.'):format(count), 'inform')
     elseif args[1] == 'status' then
-        print('[d4rk_fd_utility] Szenen-Props:')
-        for category, props in pairs(sceneProps) do
-            print(('  %s: %d'):format(category, CountProps(category)))
-        end
+        local counts = GetAllCounts()
+        local msg = ('Kegel: %d | Absperr: %d | Licht: %d | Fackeln: %d'):format(
+            counts.cones, counts.barriers, counts.lightstands, counts.flares
+        )
+        FD.Notify(msg, 'inform')
     end
 end, false)
 
