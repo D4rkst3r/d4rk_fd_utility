@@ -3,11 +3,11 @@
 --  DB Persistenz + State Bag Sync
 ---------------------------------------------------
 
-VehicleState = {}
+VehicleState       = {}
 
-local stateCache        = {}   -- { [plate] = { [fullKey] = value } }
-local pvCache           = {}   -- { [plate] = { result = bool, ttl = number } }
-local PV_CACHE_TTL      = 120000
+local stateCache   = {}      -- { [plate] = { [fullKey] = value } }
+local pvCache      = {}      -- { [plate] = { result = bool, ttl = number } }
+local PV_CACHE_TTL = 120000
 
 -- ─────────────────────────────────────────────
 --  Callback: Spieler-Fahrzeug Check
@@ -21,16 +21,15 @@ lib.callback.register('d4rk_fd_utility:cb_isPlayerVehicle', function(source, pla
     if Config.Framework == 'standalone' then return true end
     if not Config.PlayerVehicles or not Config.PlayerVehicles.enabled then return true end
 
-    -- Server-Cache prüfen
     local hit = pvCache[plate]
     if hit and GetGameTimer() < hit.ttl then return hit.result end
 
-    -- MySQL.scalar.await – gibt nur den ersten Wert zurück, günstiger als single
-    local tbl   = Config.PlayerVehicles.dbTable  or 'player_vehicles'
-    local col   = Config.PlayerVehicles.dbColumn or 'plate'
-    local query = ('SELECT 1 FROM `%s` WHERE `%s` = ? LIMIT 1'):format(tbl, col)
+    local tbl      = Config.PlayerVehicles.dbTable or 'player_vehicles'
+    local col      = Config.PlayerVehicles.dbColumn or 'plate'
+    local query    = ('SELECT 1 FROM `%s` WHERE `%s` = ? LIMIT 1'):format(tbl, col)
 
-    local result   = DB.ScalarSync(query, { plate })
+    -- MySQL.scalar.await direkt – lib.callback läuft bereits in Coroutine
+    local result   = MySQL.scalar.await(query, { plate })
     local isPlayer = result ~= nil and result ~= false
 
     pvCache[plate] = { result = isPlayer, ttl = GetGameTimer() + PV_CACHE_TTL }
@@ -41,8 +40,11 @@ end)
 -- Anderen Scripts erlauben den Cache zu invalidieren
 -- z.B. nach Fahrzeug-Rückgabe / Verkauf
 RegisterNetEvent('d4rk_fd_utility:sv_invalidateVehicleCache', function(plate)
-    if plate then pvCache[string.upper(plate)] = nil
-    else pvCache = {} end
+    if plate then
+        pvCache[string.upper(plate)] = nil
+    else
+        pvCache = {}
+    end
 end)
 
 
@@ -78,7 +80,10 @@ function VehicleState.Set(plate, fullKey, value)
 end
 
 function VehicleState.GetAll(plate, cb)
-    if stateCache[plate] then cb(stateCache[plate]) return end
+    if stateCache[plate] then
+        cb(stateCache[plate])
+        return
+    end
 
     DB.Fetch(
         'SELECT state_key, state_value FROM fd_vehicle_states WHERE plate = ?',
@@ -121,7 +126,10 @@ end
 
 function VehicleState.Apply(vehicle, cb)
     local plate = NormalizePlate(vehicle)
-    if not plate then if cb then cb(false) end return end
+    if not plate then
+        if cb then cb(false) end
+        return
+    end
 
     VehicleState.GetAll(plate, function(states)
         local count = 0
@@ -170,12 +178,24 @@ end)
 
 -- ─────────────────────────────────────────────
 --  Fahrzeug Spawn Hook
+--  Nur Spieler-Fahrzeuge aus fd_vehicle_states laden
 -- ─────────────────────────────────────────────
 
 AddEventHandler('entityCreated', function(entity)
     if GetEntityType(entity) ~= 2 then return end
-    SetTimeout(1000, function()
-        if DoesEntityExist(entity) then VehicleState.Apply(entity) end
+
+    SetTimeout(500, function()
+        if not DoesEntityExist(entity) then return end
+
+        local plate = string.upper(string.gsub(GetVehicleNumberPlateText(entity), '%s+', ''))
+
+        -- Schnellfilter: Leerplatte oder reine Zahlen → NPC, überspringen
+        if plate == '' or plate == '00000000' then return end
+        if not plate:match('%a') then return end
+
+        -- States laden – VehicleState.GetAll macht intern nur eine Query
+        -- und cached das Ergebnis. Leere Tabelle = kein weiterer Aufwand.
+        VehicleState.Apply(entity)
     end)
 end)
 

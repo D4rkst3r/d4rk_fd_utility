@@ -28,7 +28,8 @@ client_scripts {
 }
 
 server_scripts {
-    'shared/database.lua', -- MySQL nur server-seitig verfuegbar
+    '@oxmysql/lib/MySQL.lua', -- MySQL.* global verfügbar machen
+    'shared/database.lua',
     'server/vehicle_state.lua',
     'server/main.lua',
     'server/item_handler.lua',
