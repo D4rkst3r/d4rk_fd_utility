@@ -1,10 +1,10 @@
 fx_version 'cerulean'
 game 'gta5'
 
-name        'd4rk_fd_utility'
-description 'Modular Fire Department Utility – Extrication, HazMat, Scene & more'
-author      'd4rk'
-version     '1.0.0'
+name 'd4rk_fd_utility'
+description 'Modular Fire Department Utility - Extrication, HazMat, Scene & more'
+author 'd4rk'
+version '1.0.0'
 
 lua54 'yes'
 
@@ -13,9 +13,8 @@ shared_scripts {
     'shared/config.lua',
     'shared/locale.lua',
     'shared/utils.lua',
-    'shared/database.lua',
     'shared/item_registry.lua',
-    'shared/core.lua',       -- muss nach utils.lua geladen werden
+    'shared/core.lua',
 }
 
 client_scripts {
@@ -29,6 +28,7 @@ client_scripts {
 }
 
 server_scripts {
+    'shared/database.lua', -- MySQL nur server-seitig verfuegbar
     'server/vehicle_state.lua',
     'server/main.lua',
     'server/item_handler.lua',
@@ -39,4 +39,4 @@ dependencies {
     'ox_target',
 }
 
--- ox_inventory ist optional – wird in config aktiviert
+-- ox_inventory ist optional - wird in config aktiviert
