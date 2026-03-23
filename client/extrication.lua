@@ -50,6 +50,19 @@ FD.RegisterStateSchema('extrication', {
             if value then SetVehicleCanBeVisiblyDamaged(vehicle, false) end
         end,
     },
+    battery = {
+        type    = 'bool',
+        indexed = false,
+        onApply = function(vehicle, _, value)
+            if value then
+                SetVehicleEngineOn(vehicle, false, true, true)
+                SetVehicleUndriveable(vehicle, true)
+                SetVehicleEngineHealth(vehicle, 0.0)
+            else
+                SetVehicleUndriveable(vehicle, false)
+            end
+        end,
+    },
     stabilized = {
         type    = 'bool',
         indexed = false,
@@ -107,10 +120,10 @@ end
 -- ─────────────────────────────────────────────
 
 local doorLabels = {
-    [0] = 'Fahrertür vorne',
-    [1] = 'Fahrertür hinten',
-    [2] = 'Beifahrertür vorne',
-    [3] = 'Beifahrertür hinten',
+    [0] = 'Links Vorne (Fahrer)',
+    [1] = 'Rechts Vorne (Beifahrer)',
+    [2] = 'Links Hinten',
+    [3] = 'Rechts Hinten',
     [4] = 'Motorhaube',
     [5] = 'Kofferraum',
 }
@@ -225,6 +238,28 @@ local function OpenExtricationMenu(vehicle)
         }
     end
 
+    -- Batterie
+    if not FD.State.Get(vehicle, 'extrication', 'battery') then
+        options[#options + 1] = {
+            title    = 'Batterie entfernen',
+            icon     = 'fas fa-car-battery',
+            onSelect = function()
+                if not CanInteract('doorRemove', vehicle) then return end
+
+                local done = FD.Progress('Batterie entfernen', 'spreizer', 6000)
+                if not done then return end
+
+                SetVehicleEngineOn(vehicle, false, true, true)
+                SetVehicleUndriveable(vehicle, true)
+                SetVehicleEngineHealth(vehicle, 0.0)
+                FD.State.Set(vehicle, 'extrication', 'battery', nil, true)
+                SetCD('doorRemove', vehicle)
+                FD.Notify('Batterie entfernt – Fahrzeug nicht mehr startbar.', 'success')
+                FD.Debug('extrication', 'Batterie entfernt – Fahrzeug %d', vehicle)
+            end,
+        }
+    end
+
     -- Airbag
     if not FD.State.Get(vehicle, 'extrication', 'airbag') then
         options[#options + 1] = {
@@ -309,8 +344,57 @@ local function BuildTargetOptions(vehicle)
 end
 
 -- ─────────────────────────────────────────────
---  Scan Thread
+--  Reparatur-Erkennung
+--  Wenn Engine Health auf 1000 springt → States löschen
 -- ─────────────────────────────────────────────
+
+CreateThread(function()
+    local trackedHealth = {}   -- { [vehicle] = lastEngineHealth }
+
+    while FD.ModuleEnabled('Extrication') do
+        for vehicle in pairs(activeTargets) do
+            if DoesEntityExist(vehicle) then
+                local health = GetVehicleEngineHealth(vehicle)
+                local last   = trackedHealth[vehicle]
+
+                -- Von beschädigt auf voll repariert
+                if last and last < 950.0 and health >= 999.0 then
+                    FD.Debug('extrication', 'Fahrzeug %d repariert → States löschen', vehicle)
+                    -- Undriveable zurücksetzen bevor States gelöscht werden
+                    SetVehicleUndriveable(vehicle, false)
+                    FD.State.Clear(vehicle)
+                    FD.Notify('Fahrzeugzustand zurückgesetzt.', 'inform')
+                end
+
+                trackedHealth[vehicle] = health
+            else
+                trackedHealth[vehicle] = nil
+            end
+        end
+        Wait(2000)
+    end
+end)
+
+-- ─────────────────────────────────────────────
+--  Admin Befehl: /fdclear
+--  Löscht States des nächsten Fahrzeugs
+-- ─────────────────────────────────────────────
+
+RegisterCommand('fdclear', function()
+    local ped     = PlayerPedId()
+    local pCoords = GetEntityCoords(ped)
+    local vehicle = GetClosestVehicle(pCoords.x, pCoords.y, pCoords.z, 10.0, 0, 70)
+
+    if not vehicle or vehicle == 0 then
+        FD.Notify('Kein Fahrzeug in der Nähe.', 'error')
+        return
+    end
+
+    local plate = GetVehicleNumberPlateText(vehicle)
+    FD.State.Clear(vehicle)
+    FD.Notify(('States gelöscht: %s'):format(plate), 'success')
+    FD.Debug('extrication', '/fdclear: States gelöscht für %s', plate)
+end, false)
 
 CreateThread(function()
     Config.Extrication    = Config.Extrication    or { onlyWrecked = false }
