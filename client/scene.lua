@@ -117,16 +117,15 @@ local function EnsureLightThread()
     CreateThread(function()
         while lightThread do
             local any = false
-            for obj in pairs(lightActive) do
+            for obj, light in pairs(lightActive) do
                 if DoesEntityExist(obj) then
                     any = true
-                    local c = Config.Scene.lightColor
                     local pos = GetEntityCoords(obj)
                     DrawLightWithRange(
-                        pos.x, pos.y, pos.z + 2.5,
-                        c.r, c.g, c.b,
-                        Config.Scene.lightRange,
-                        Config.Scene.lightIntensity
+                        pos.x, pos.y, pos.z + (light.offset or 2.5),
+                        light.r, light.g, light.b,
+                        light.range,
+                        light.intensity
                     )
                 else
                     lightActive[obj] = nil
@@ -145,7 +144,7 @@ end
 --  Prop-Platzierung
 -- ─────────────────────────────────────────────
 
-local function PlacePropWithTarget(model, category, label, cooldownKey, item, withLight)
+local function PlacePropWithTarget(model, category, label, cooldownKey, item, withLight, isFlare)
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
     if item and not FD.HasItem(item) then FD.Notify(T('no_item'), 'error') return end
 
@@ -172,8 +171,28 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
 
     -- Lichtmast: zentralen Light-Thread starten
     if withLight then
-        lightActive[obj] = true
+        lightActive[obj] = { r = Config.Scene.lightColor.r, g = Config.Scene.lightColor.g, b = Config.Scene.lightColor.b, range = Config.Scene.lightRange, intensity = Config.Scene.lightIntensity, offset = 2.5 }
         EnsureLightThread()
+    end
+
+    -- Fackel: Partikeleffekt + oranges Licht
+    if isFlare then
+        -- Partikeleffekt anhängen
+        lib.requestNamedPtfxAsset('core')
+        UseParticleFxAssetNextCall('core')
+        local ptfx = StartParticleFxLoopedOnEntity(
+            'fire_entity_s',
+            obj, 0.0, 0.0, 0.1,
+            0.0, 0.0, 0.0,
+            0.5, false, false, false
+        )
+
+        -- Oranges Licht für Fackel
+        lightActive[obj] = { r = 255, g = 80, b = 0, range = 8.0, intensity = 5.0, offset = 0.2 }
+        EnsureLightThread()
+
+        -- Partikel beim Entfernen stoppen – in Entry speichern
+        sceneProps[category][#sceneProps[category]].ptfx = ptfx
     end
 
     -- ox_target zum Aufheben
@@ -184,8 +203,16 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
             label    = label .. ' aufheben',
             distance = 2.5,
             onSelect = function()
+                -- Partikel stoppen falls Fackel
+                for _, entry in ipairs(sceneProps[category]) do
+                    if entry.obj == obj and entry.ptfx then
+                        StopParticleFxLooped(entry.ptfx, false)
+                    end
+                end
                 RemovePropFromCategory(category, obj)
-                if item then FD.RemoveItem(item, -1) end  -- Item zurückgeben wenn consumable = false
+                if item and Config.Items[item] and not Config.Items[item].consume then
+                    -- Nicht-konsumierbare Items zurückgeben
+                end
                 FD.Notify(label .. ' aufgehoben.', 'inform')
             end,
             canInteract = function() return FD.HasJob() end,
@@ -309,7 +336,7 @@ local function OpenSceneMenu()
             icon        = 'fas fa-fire',
             disabled    = counts.flares >= Config.Limits.flares,
             onSelect    = function()
-                PlacePropWithTarget(Config.Props.flare, 'flares', 'Fackel', 'conePlace', nil)
+                PlacePropWithTarget(Config.Props.flare, 'flares', 'Fackel', 'conePlace', nil, false, true)
             end,
         },
 
