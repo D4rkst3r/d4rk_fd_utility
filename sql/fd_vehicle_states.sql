@@ -22,8 +22,10 @@ CREATE TABLE IF NOT EXISTS `fd_vehicle_states` (
 --  Extrication:
 --    door_0 ... door_5    BOOL   Tür entfernt
 --    tire_0 ... tire_5    BOOL   Reifen entfernt
+--    window_0 .. window_7 BOOL  Scheibe eingeschlagen
 --    roof                 BOOL   Dach aufgeschnitten
 --    airbag               BOOL   Airbag deaktiviert
+--    battery              BOOL   Batterie entfernt
 --    stabilized           BOOL   Fahrzeug stabilisiert
 --
 --  HazMat (kommt später):
