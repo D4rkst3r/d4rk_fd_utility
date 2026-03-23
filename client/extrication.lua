@@ -57,9 +57,12 @@ FD.RegisterStateSchema('extrication', {
             if value then
                 SetVehicleEngineOn(vehicle, false, true, true)
                 SetVehicleUndriveable(vehicle, true)
-                SetVehicleEngineHealth(vehicle, 0.0)
+                -- 500.0 = Motor nicht startbar aber kein Qualm
+                -- 0.0 würde Rauch/Feuer auslösen
+                SetVehicleEngineHealth(vehicle, 500.0)
             else
                 SetVehicleUndriveable(vehicle, false)
+                SetVehicleEngineHealth(vehicle, 1000.0)
             end
         end,
     },
@@ -77,6 +80,8 @@ AddStateBagChangeHandler('fd_cleared', nil, function(bagName, _, value)
     local vehicle = GetEntityFromStateBagName(bagName)
     if not vehicle or not DoesEntityExist(vehicle) then return end
     FreezeEntityPosition(vehicle, false)
+    SetVehicleUndriveable(vehicle, false)
+    FD.Debug('extrication', 'Fahrzeug %d komplett zurückgesetzt', vehicle)
 end)
 
 AddStateBagChangeHandler('fd_module_cleared', nil, function(bagName, _, value)
@@ -251,7 +256,7 @@ local function OpenExtricationMenu(vehicle)
 
                 SetVehicleEngineOn(vehicle, false, true, true)
                 SetVehicleUndriveable(vehicle, true)
-                SetVehicleEngineHealth(vehicle, 0.0)
+                SetVehicleEngineHealth(vehicle, 500.0)
                 FD.State.Set(vehicle, 'extrication', 'battery', nil, true)
                 SetCD('doorRemove', vehicle)
                 FD.Notify('Batterie entfernt – Fahrzeug nicht mehr startbar.', 'success')
@@ -342,38 +347,6 @@ local function BuildTargetOptions(vehicle)
         },
     }
 end
-
--- ─────────────────────────────────────────────
---  Reparatur-Erkennung
---  Wenn Engine Health auf 1000 springt → States löschen
--- ─────────────────────────────────────────────
-
-CreateThread(function()
-    local trackedHealth = {}   -- { [vehicle] = lastEngineHealth }
-
-    while FD.ModuleEnabled('Extrication') do
-        for vehicle in pairs(activeTargets) do
-            if DoesEntityExist(vehicle) then
-                local health = GetVehicleEngineHealth(vehicle)
-                local last   = trackedHealth[vehicle]
-
-                -- Von beschädigt auf voll repariert
-                if last and last < 950.0 and health >= 999.0 then
-                    FD.Debug('extrication', 'Fahrzeug %d repariert → States löschen', vehicle)
-                    -- Undriveable zurücksetzen bevor States gelöscht werden
-                    SetVehicleUndriveable(vehicle, false)
-                    FD.State.Clear(vehicle)
-                    FD.Notify('Fahrzeugzustand zurückgesetzt.', 'inform')
-                end
-
-                trackedHealth[vehicle] = health
-            else
-                trackedHealth[vehicle] = nil
-            end
-        end
-        Wait(2000)
-    end
-end)
 
 -- ─────────────────────────────────────────────
 --  Admin Befehl: /fdclear

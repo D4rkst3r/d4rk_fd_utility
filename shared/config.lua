@@ -7,7 +7,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 --  Framework & Integrations
 -- ─────────────────────────────────────────────
-Config.Framework     = 'standalone'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
+Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
 Config.Debug         = true         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'

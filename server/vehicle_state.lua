@@ -194,6 +194,100 @@ AddEventHandler('onResourceStart', function(resource)
     SetTimeout(1000, LoadKnownPlates)
 end)
 
+-- ─────────────────────────────────────────────
+--  Garagen-Hooks
+--  Zuverlässiger als Client-Polling
+-- ─────────────────────────────────────────────
+
+local function HandleVehicleParked(plate, engineHealth, bodyHealth)
+    if not plate then return end
+    plate = string.upper(string.gsub(plate, '%s+', ''))
+    if not knownPlates[plate] then return end
+
+    FD.Debug('vehicle', 'Fahrzeug eingeparkt: %s | engine=%.0f body=%.0f', plate, engineHealth or 0, bodyHealth or 0)
+
+    -- Voll repariert → alle States löschen
+    if (engineHealth or 0) >= 999.0 and (bodyHealth or 0) >= 999.0 then
+        VehicleState.Clear(plate)
+        FD.Debug('vehicle', 'Repariertes Fahrzeug → States gelöscht: %s', plate)
+    end
+end
+
+local function HandleVehicleSpawned(plate, engineHealth, bodyHealth, doorsJSON)
+    if not plate then return end
+    plate = string.upper(string.gsub(plate, '%s+', ''))
+    if not knownPlates[plate] then return end
+
+    -- Wenn engine = 1000 und keine offenen Türen in mods → außerhalb repariert
+    -- Dann unsere States löschen um Inkonsistenz zu vermeiden
+    local fullyRepaired = (engineHealth or 0) >= 999.0 and (bodyHealth or 0) >= 999.0
+    local doorsClean    = true
+
+    if doorsJSON and doorsJSON ~= '' and doorsJSON ~= '[]' then
+        local ok, doors = pcall(json.decode, doorsJSON)
+        if ok and doors and #doors > 0 then
+            doorsClean = false  -- QBX hat noch offene Türen gespeichert
+        end
+    end
+
+    if fullyRepaired and doorsClean then
+        VehicleState.Clear(plate)
+        FD.Debug('vehicle', 'Sauber gespawntes Fahrzeug → States gelöscht: %s', plate)
+    end
+end
+
+-- qbx_garages: Fahrzeug wird eingeparkt
+-- props enthält ox_lib VehicleProperties
+AddEventHandler('qbx_garages:server:vehicleParked', function(netId, props, garageName)
+    if not props then return end
+    local plate = props.plate
+    local eng   = props.engineHealth
+    local body  = props.bodyHealth
+    HandleVehicleParked(plate, eng, body)
+end)
+
+-- qbx_garages: Fahrzeug wird gespawnt (aus Garage geholt)
+AddEventHandler('qbx_garages:server:vehicleSpawned', function(vehicleId, netId)
+    if not vehicleId then return end
+    MySQL.single(
+        'SELECT plate, engine, body, mods FROM player_vehicles WHERE id = ? LIMIT 1',
+        { vehicleId },
+        function(row)
+            if not row then return end
+            local doorsStr = ''
+            local ok, decoded = pcall(json.decode, row.mods or '')
+            if ok and decoded and decoded.doors then
+                doorsStr = json.encode(decoded.doors)
+            end
+            HandleVehicleSpawned(row.plate, row.engine, row.body, doorsStr)
+        end
+    )
+end)
+
+-- Fallback: Generisches Reparatur-Event (qb-customs, qbx_customs, etc.)
+-- Viele Mechaniker-Scripts feuern dieses Event nach einer Reparatur
+AddEventHandler('QBCore:Server:VehicleRepaired', function(netId)
+    if not netId then return end
+    local vehicle = NetworkGetEntityFromNetworkId(netId)
+    if not DoesEntityExist(vehicle) then return end
+    local plate = NormalizePlate(vehicle)
+    if plate and knownPlates[plate] then
+        VehicleState.Clear(plate)
+        FD.Debug('vehicle', 'QBCore:Server:VehicleRepaired → States gelöscht: %s', plate)
+    end
+end)
+
+-- Direkt aufrufbar von anderen Scripts:
+-- TriggerEvent('d4rk_fd_utility:vehicleRepaired', plate)
+AddEventHandler('d4rk_fd_utility:vehicleRepaired', function(plate)
+    if not plate then return end
+    plate = string.upper(string.gsub(plate, '%s+', ''))
+    if knownPlates[plate] then
+        VehicleState.Clear(plate)
+        FD.Debug('vehicle', 'vehicleRepaired Event → States gelöscht: %s', plate)
+    end
+end)
+
 RegisterNetEvent('d4rk_fd_utility:sv_setState', function(netVehicle, fullKey, value)
     local vehicle = NetworkGetEntityFromNetworkId(netVehicle)
     if not DoesEntityExist(vehicle) then return end
