@@ -122,7 +122,21 @@ end
 function FD.State.Get(vehicle, module, key, index)
     local netId   = VehToNet(vehicle)
     local fullKey = FD.State.BuildKey(module, key, index)
-    return CacheGet(netId, fullKey)
+
+    -- Erst lokalen Cache prüfen
+    local cached = CacheGet(netId, fullKey)
+    if cached ~= nil then return cached end
+
+    -- Fallback: direkt State Bag lesen (z.B. nach Fahrzeug-Respawn)
+    -- State Bags sind mit 'fd_' prefix gesetzt
+    local bagValue = Entity(vehicle).state['fd_' .. fullKey]
+    if bagValue ~= nil then
+        -- In Cache schreiben damit nächster Aufruf schneller ist
+        CacheSet(netId, fullKey, bagValue)
+        return bagValue
+    end
+
+    return nil
 end
 
 -- ─────────────────────────────────────────────

@@ -11,7 +11,7 @@
 --]]
 
 -- ── Extrication ─────────────────────────────────────────
-['hydraulicSpreader'] = {
+['hydraulicspreader'] = {
     label       = 'Hydraulikspreizer',
     weight      = 15000,
     stack       = false,
@@ -19,7 +19,7 @@
     description = 'Hydraulischer Rettungsspreizer – Fahrzeugtüren öffnen',
 },
 
-['rescueSaw'] = {
+['rescuesaw'] = {
     label       = 'Rettungssäge',
     weight      = 12000,
     stack       = false,
@@ -27,7 +27,7 @@
     description = 'Rettungssäge – Dach und Türen aufschneiden',
 },
 
-['tireCutter'] = {
+['tirecutters'] = {
     label       = 'Reifenschneider',
     weight      = 5000,
     stack       = false,
@@ -36,7 +36,7 @@
 },
 
 -- ── HazMat ───────────────────────────────────────────────
-['oilBarrier'] = {
+['oilbarrier'] = {
     label       = 'Ölsperre',
     weight      = 3000,
     stack       = true,
@@ -44,7 +44,7 @@
     description = 'Platzierbare Ölsperre / Barriere',
 },
 
-['hazmatSuit'] = {
+['hazmatsuit'] = {
     label       = 'HazMat Anzug',
     weight      = 8000,
     stack       = false,
@@ -53,7 +53,7 @@
 },
 
 -- ── Scene Management ─────────────────────────────────────
-['trafficCone'] = {
+['trafficcone'] = {
     label       = 'Verkehrskegel',
     weight      = 2000,
     stack       = true,
@@ -61,7 +61,7 @@
     description = 'Verkehrskegel zur Absicherung der Einsatzstelle',
 },
 
-['safetyBarrier'] = {
+['safetybarrier'] = {
     label       = 'Absperrband',
     weight      = 4000,
     stack       = true,
@@ -69,7 +69,7 @@
     description = 'Absperrband / Barriere für die Einsatzstelle',
 },
 
-['lightStand'] = {
+['lightstand'] = {
     label       = 'Lichtmast',
     weight      = 10000,
     stack       = false,
@@ -78,7 +78,7 @@
 },
 
 -- ── Equipment ────────────────────────────────────────────
-['thermoCam'] = {
+['thermocam'] = {
     label       = 'Wärmebildkamera',
     weight      = 3000,
     stack       = false,
@@ -86,7 +86,7 @@
     description = 'Wärmebildkamera zur Personensuche',
 },
 
-['fireExtinguisher'] = {
+['fireextinguisher'] = {
     label       = 'Feuerlöscher',
     weight      = 8000,
     stack       = false,
@@ -103,7 +103,7 @@
     description = 'Spineboard zur Patientenstabilisierung',
 },
 
-['triageTag'] = {
+['triagetag'] = {
     label       = 'Triage-Tag',
     weight      = 100,
     stack       = true,

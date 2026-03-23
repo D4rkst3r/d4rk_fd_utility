@@ -1,10 +1,10 @@
 fx_version 'cerulean'
 game 'gta5'
 
-name 'd4rk_fd_utility'
+name        'd4rk_fd_utility'
 description 'Modular Fire Department Utility - Extrication, HazMat, Scene & more'
-author 'd4rk'
-version '1.0.0'
+author      'd4rk'
+version     '1.0.0'
 
 lua54 'yes'
 
@@ -28,7 +28,7 @@ client_scripts {
 }
 
 server_scripts {
-    '@oxmysql/lib/MySQL.lua', -- MySQL.* global verfügbar machen
+    '@oxmysql/lib/MySQL.lua',  -- MySQL.* global verfügbar machen
     'shared/database.lua',
     'server/vehicle_state.lua',
     'server/main.lua',

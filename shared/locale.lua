@@ -4,8 +4,7 @@
 
 local localeData = {}
 
--- Lädt die JSON Locale-Datei beim Start
-CreateThread(function()
+local function LoadLocale()
     local file = LoadResourceFile(GetCurrentResourceName(), ('locales/%s.json'):format(Config.Locale))
     if file then
         localeData = json.decode(file) or {}
@@ -14,10 +13,13 @@ CreateThread(function()
         local fallback = LoadResourceFile(GetCurrentResourceName(), 'locales/en.json')
         if fallback then localeData = json.decode(fallback) or {} end
     end
-end)
+end
+
+-- Direkt laden ohne Thread – funktioniert auf Client und Server
+LoadLocale()
 
 ---@param key string
----@param ... any  Platzhalter-Werte für string.format
+---@param ... any
 ---@return string
 function T(key, ...)
     local text = localeData[key] or key

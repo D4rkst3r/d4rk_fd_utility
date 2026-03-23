@@ -3,11 +3,30 @@
 --  DB Persistenz + State Bag Sync
 ---------------------------------------------------
 
-VehicleState       = {}
+VehicleState = {}
 
-local stateCache   = {}      -- { [plate] = { [fullKey] = value } }
-local pvCache      = {}      -- { [plate] = { result = bool, ttl = number } }
-local PV_CACHE_TTL = 120000
+local stateCache        = {}   -- { [plate] = { [fullKey] = value } }
+local pvCache           = {}   -- { [plate] = { result = bool, ttl = number } }
+local PV_CACHE_TTL      = 120000
+
+-- Plates die tatsächlich States in der DB haben
+-- Wird beim Start geladen und bei jedem Set/Clear aktualisiert
+-- Verhindert DB-Query für jedes gespawnte NPC-Fahrzeug
+local knownPlates       = {}
+
+local function LoadKnownPlates()
+    MySQL.query('SELECT DISTINCT plate FROM fd_vehicle_states', {}, function(rows)
+        knownPlates = {}
+        for _, row in ipairs(rows or {}) do
+            knownPlates[row.plate] = true
+        end
+        FD.Debug('Bekannte Plates geladen: %d', (function()
+            local n = 0
+            for _ in pairs(knownPlates) do n = n + 1 end
+            return n
+        end)())
+    end)
+end
 
 -- ─────────────────────────────────────────────
 --  Callback: Spieler-Fahrzeug Check
@@ -24,9 +43,9 @@ lib.callback.register('d4rk_fd_utility:cb_isPlayerVehicle', function(source, pla
     local hit = pvCache[plate]
     if hit and GetGameTimer() < hit.ttl then return hit.result end
 
-    local tbl      = Config.PlayerVehicles.dbTable or 'player_vehicles'
-    local col      = Config.PlayerVehicles.dbColumn or 'plate'
-    local query    = ('SELECT 1 FROM `%s` WHERE `%s` = ? LIMIT 1'):format(tbl, col)
+    local tbl   = Config.PlayerVehicles.dbTable  or 'player_vehicles'
+    local col   = Config.PlayerVehicles.dbColumn or 'plate'
+    local query = ('SELECT 1 FROM `%s` WHERE `%s` = ? LIMIT 1'):format(tbl, col)
 
     -- MySQL.scalar.await direkt – lib.callback läuft bereits in Coroutine
     local result   = MySQL.scalar.await(query, { plate })
@@ -40,11 +59,8 @@ end)
 -- Anderen Scripts erlauben den Cache zu invalidieren
 -- z.B. nach Fahrzeug-Rückgabe / Verkauf
 RegisterNetEvent('d4rk_fd_utility:sv_invalidateVehicleCache', function(plate)
-    if plate then
-        pvCache[string.upper(plate)] = nil
-    else
-        pvCache = {}
-    end
+    if plate then pvCache[string.upper(plate)] = nil
+    else pvCache = {} end
 end)
 
 
@@ -70,8 +86,9 @@ end
 function VehicleState.Set(plate, fullKey, value)
     stateCache[plate]          = stateCache[plate] or {}
     stateCache[plate][fullKey] = value
+    knownPlates[plate]         = true   -- in Index eintragen
 
-    DB.Execute(
+    MySQL.update(
         [[INSERT INTO fd_vehicle_states (plate, state_key, state_value)
           VALUES (?, ?, ?)
           ON DUPLICATE KEY UPDATE state_value = VALUES(state_value), updated_at = CURRENT_TIMESTAMP]],
@@ -80,12 +97,9 @@ function VehicleState.Set(plate, fullKey, value)
 end
 
 function VehicleState.GetAll(plate, cb)
-    if stateCache[plate] then
-        cb(stateCache[plate])
-        return
-    end
+    if stateCache[plate] then cb(stateCache[plate]) return end
 
-    DB.Fetch(
+    MySQL.query(
         'SELECT state_key, state_value FROM fd_vehicle_states WHERE plate = ?',
         { plate },
         function(rows)
@@ -101,19 +115,26 @@ function VehicleState.GetAll(plate, cb)
 end
 
 function VehicleState.Clear(plate, cb)
-    stateCache[plate] = nil
-    DB.Execute('DELETE FROM fd_vehicle_states WHERE plate = ?', { plate }, cb)
+    stateCache[plate]  = nil
+    knownPlates[plate] = nil   -- aus Index entfernen
+
+    MySQL.update('DELETE FROM fd_vehicle_states WHERE plate = ?', { plate }, cb)
 end
 
 function VehicleState.ClearModule(plate, module, cb)
     if stateCache[plate] then
+        local hasRemaining = false
         for key in pairs(stateCache[plate]) do
             if key:sub(1, #module + 1) == module .. '_' then
                 stateCache[plate][key] = nil
+            else
+                hasRemaining = true
             end
         end
+        if not hasRemaining then knownPlates[plate] = nil end
     end
-    DB.Execute(
+
+    MySQL.update(
         "DELETE FROM fd_vehicle_states WHERE plate = ? AND state_key LIKE ?",
         { plate, module .. '_%' },
         cb
@@ -126,7 +147,10 @@ end
 
 function VehicleState.Apply(vehicle, cb)
     local plate = NormalizePlate(vehicle)
-    if not plate then
+    if not plate then if cb then cb(false) end return end
+
+    -- Nicht in knownPlates → keine States vorhanden → sofort fertig
+    if not knownPlates[plate] then
         if cb then cb(false) end
         return
     end
@@ -143,8 +167,32 @@ function VehicleState.Apply(vehicle, cb)
 end
 
 -- ─────────────────────────────────────────────
---  Net Events
+--  Fahrzeug Spawn Hook
+--  Nur Fahrzeuge mit bekannter Plate prüfen
 -- ─────────────────────────────────────────────
+
+AddEventHandler('entityCreated', function(entity)
+    local ok, etype = pcall(GetEntityType, entity)
+    if not ok or etype ~= 2 then return end
+
+    SetTimeout(500, function()
+        if not DoesEntityExist(entity) then return end
+        local ok2, plate = pcall(NormalizePlate, entity)
+        if not ok2 or not plate then return end
+        if knownPlates[plate] then
+            VehicleState.Apply(entity)
+        end
+    end)
+end)
+
+-- ─────────────────────────────────────────────
+--  Startup: bekannte Plates laden
+-- ─────────────────────────────────────────────
+
+AddEventHandler('onResourceStart', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    SetTimeout(1000, LoadKnownPlates)
+end)
 
 RegisterNetEvent('d4rk_fd_utility:sv_setState', function(netVehicle, fullKey, value)
     local vehicle = NetworkGetEntityFromNetworkId(netVehicle)
@@ -173,29 +221,6 @@ RegisterNetEvent('d4rk_fd_utility:sv_clearStateModule', function(netVehicle, mod
     if not plate then return end
     VehicleState.ClearModule(plate, module, function()
         Entity(vehicle).state:set('fd_module_cleared', module, true)
-    end)
-end)
-
--- ─────────────────────────────────────────────
---  Fahrzeug Spawn Hook
---  Nur Spieler-Fahrzeuge aus fd_vehicle_states laden
--- ─────────────────────────────────────────────
-
-AddEventHandler('entityCreated', function(entity)
-    if GetEntityType(entity) ~= 2 then return end
-
-    SetTimeout(500, function()
-        if not DoesEntityExist(entity) then return end
-
-        local plate = string.upper(string.gsub(GetVehicleNumberPlateText(entity), '%s+', ''))
-
-        -- Schnellfilter: Leerplatte oder reine Zahlen → NPC, überspringen
-        if plate == '' or plate == '00000000' then return end
-        if not plate:match('%a') then return end
-
-        -- States laden – VehicleState.GetAll macht intern nur eine Query
-        -- und cached das Ergebnis. Leere Tabelle = kein weiterer Aufwand.
-        VehicleState.Apply(entity)
     end)
 end)
 

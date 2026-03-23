@@ -9,7 +9,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
-Config.Debug         = false         -- Debug-Prints in der Console
+Config.Debug         = true         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
 
 Config.UseTarget     = true          -- ox_target für Interaktionen
@@ -79,21 +79,21 @@ Config.Grades = {
 -- ─────────────────────────────────────────────
 Config.Items = {
     -- Extrication
-    hydraulicSpreader = {
+    hydraulicspreader = {
         label      = 'Hydraulikspreizer',
         required   = true,
         consume    = false,
         durability = true,
         useTime    = 8000,   -- ms
     },
-    rescueSaw = {
+    rescuesaw = {
         label      = 'Rettungssäge',
         required   = true,
         consume    = false,
         durability = true,
         useTime    = 10000,
     },
-    tireCutter = {
+    tirecutters = {
         label      = 'Reifenschneider',
         required   = true,
         consume    = false,
@@ -101,14 +101,14 @@ Config.Items = {
         useTime    = 5000,
     },
     -- HazMat
-    oilBarrier = {
+    oilbarrier = {
         label      = 'Ölsperre',
         required   = true,
         consume    = true,
         durability = false,
         useTime    = 3000,
     },
-    hazmatSuit = {
+    hazmatsuit = {
         label      = 'HazMat Anzug',
         required   = false,
         consume    = false,
@@ -116,21 +116,21 @@ Config.Items = {
         useTime    = 0,
     },
     -- Scene Management
-    trafficCone = {
+    trafficcone = {
         label      = 'Verkehrskegel',
         required   = true,
         consume    = true,
         durability = false,
         useTime    = 1500,
     },
-    safetyBarrier = {
+    safetybarrier = {
         label      = 'Absperrband',
         required   = true,
         consume    = true,
         durability = false,
         useTime    = 2000,
     },
-    lightStand = {
+    lightstand = {
         label      = 'Lichtmast',
         required   = true,
         consume    = false,
@@ -138,14 +138,14 @@ Config.Items = {
         useTime    = 4000,
     },
     -- Equipment
-    thermoCam = {
+    thermocam = {
         label      = 'Wärmebildkamera',
         required   = false,
         consume    = false,
         durability = false,
         useTime    = 0,
     },
-    fireExtinguisher = {
+    fireextinguisher = {
         label      = 'Feuerlöscher',
         required   = true,
         consume    = true,
@@ -160,7 +160,7 @@ Config.Items = {
         durability = false,
         useTime    = 3000,
     },
-    triageTag = {
+    triagetag = {
         label      = 'Triage-Tag',
         required   = true,
         consume    = true,
@@ -189,7 +189,7 @@ Config.Cooldowns = {
 Config.Limits = {
     cones        = 12,
     barriers     = 8,
-    lightStands  = 4,
+    lightstands  = 4,
     oilPatches   = 6,
     fireSigns    = 6,
 }
@@ -209,8 +209,8 @@ Config.Anims = {
         flag  = 1,
     },
     kneel = {
-        dict  = 'amb@medic@standing@tendtovictim@enter',
-        clip  = 'enter',
+        dict  = 'amb@world_human_gardener_plant@male@base',
+        clip  = 'base',
         flag  = 1,
     },
     place = {
@@ -226,10 +226,11 @@ Config.Anims = {
 Config.Props = {
     cone          = 'prop_mp_cone_01',
     barrierPost   = 'prop_barrier_wat_03a',
-    lightStand    = 'prop_worklight_03a',
+    lightstand    = 'prop_worklight_03a',
     oilPatch      = 'prop_oil_slick_01',
     warningSign   = 'prop_mp_arrow_barrier_01',
     flare         = 'prop_flare_01',
+    wheel         = 'prop_air_chock_04',  -- Stabilisierungs-Keil
 }
 
 -- ─────────────────────────────────────────────
