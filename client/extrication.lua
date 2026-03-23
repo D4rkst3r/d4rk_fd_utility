@@ -28,6 +28,16 @@ FD.RegisterStateSchema('extrication', {
             end
         end,
     },
+    wheel = {
+        type    = 'bool',
+        indexed = true,
+        count   = 6,
+        onApply = function(vehicle, index, value)
+            if value then
+                BreakOffVehicleWheel(vehicle, index, false, 3.0, true, false)
+            end
+        end,
+    },
     window = {
         type    = 'bool',
         indexed = true,
@@ -203,16 +213,21 @@ local function ShowProgressLog(vehicle)
                 )
             end
 
-            -- Reifen
+            -- Reifen & Felgen
             local tiresDone, tiresTotal = 0, GetVehicleNumberOfWheels(vehicle)
+            local wheelsDone = 0
             for i = 0, tiresTotal - 1 do
-                if FD.State.Get(vehicle, 'extrication', 'tire', i) then
-                    tiresDone = tiresDone + 1
-                end
+                if FD.State.Get(vehicle, 'extrication', 'tire', i) then tiresDone = tiresDone + 1 end
+                if FD.State.Get(vehicle, 'extrication', 'wheel', i) then wheelsDone = wheelsDone + 1 end
             end
             lines[#lines + 1] = ('%s Reifen %d/%d'):format(
                 tiresDone == tiresTotal and '✓' or '○', tiresDone, tiresTotal
             )
+            if wheelsDone > 0 then
+                lines[#lines + 1] = ('%s Felgen %d/%d'):format(
+                    wheelsDone == tiresTotal and '✓' or '○', wheelsDone, tiresTotal
+                )
+            end
 
             -- Einzelne States
             local function stateIcon(module, key)
@@ -271,6 +286,15 @@ local tireLabels = {
     [3] = 'Reifen hinten rechts',
     [4] = 'Reifen mitte links',
     [5] = 'Reifen mitte rechts',
+}
+
+local wheelLabels = {
+    [0] = 'Felge vorne links',
+    [1] = 'Felge vorne rechts',
+    [2] = 'Felge hinten links',
+    [3] = 'Felge hinten rechts',
+    [4] = 'Felge mitte links',
+    [5] = 'Felge mitte rechts',
 }
 
 local windowLabels = {
@@ -408,6 +432,41 @@ local function OpenExtricationMenu(vehicle)
                 FD.Notify(label .. ' entfernt.', 'success')
             end,
         }
+    end
+
+    -- ── Felgen ───────────────────────────────
+    for i = 0, GetVehicleNumberOfWheels(vehicle) - 1 do
+        local wheelIdx = i
+        local label    = wheelLabels[i] or ('Felge %d'):format(i)
+        local tireDone  = FD.State.Get(vehicle, 'extrication', 'tire', wheelIdx) == true
+        local wheelDone = FD.State.Get(vehicle, 'extrication', 'wheel', wheelIdx) == true
+
+        -- Felge nur anzeigen wenn Reifen bereits entfernt
+        if tireDone then
+            options[#options + 1] = {
+                title       = label .. ' entfernen',
+                description = wheelDone and '✓ Bereits entfernt' or 'Reifen wurde bereits abgeschnitten',
+                icon        = 'fas fa-circle',
+                disabled    = wheelDone,
+                onSelect    = function()
+                    if not CanInteract('tireRemove', vehicle) then return end
+
+                    local done = FD.Progress(
+                        ('Entferne %s'):format(label),
+                        'spreizer',
+                        Config.Items.hydraulicspreader.useTime
+                    )
+                    if not done then return end
+                    if not RequestControl(vehicle) then FD.Notify('Fahrzeug nicht erreichbar.', 'error') return end
+
+                    BreakOffVehicleWheel(vehicle, wheelIdx, false, 3.0, true, false)
+                    FD.State.Set(vehicle, 'extrication', 'wheel', wheelIdx, true)
+                    SetCD('tireRemove', vehicle)
+                    FD.Notify(label .. ' entfernt.', 'success')
+                    FD.Debug('extrication', 'Felge %d entfernt – Fahrzeug %d', wheelIdx, vehicle)
+                end,
+            }
+        end
     end
 
     -- ── Dach ─────────────────────────────────
