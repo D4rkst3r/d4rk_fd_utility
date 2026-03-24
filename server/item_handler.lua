@@ -68,3 +68,17 @@ AddEventHandler('playerDropped', function(reason)
     TriggerClientEvent('d4rk_fd_utility:cl_cleanupProps', src)
     FD.Debug('Props cleanup für Player %d (%s)', src, reason)
 end)
+
+-- ─────────────────────────────────────────────
+--  Item direkt entfernen (ohne consume-Check)
+--  Für Scene Props die manuell verwaltet werden
+-- ─────────────────────────────────────────────
+
+RegisterNetEvent('d4rk_fd_utility:sv_removeItemDirect', function(itemName, amount)
+    local src = source
+    if not Config.UseInventory then return end
+    if not SvHasJob(src) then return end
+    if not Config.Items[itemName] then return end
+    exports.ox_inventory:RemoveItem(src, itemName, amount or 1)
+    FD.Debug('general', 'Item direkt entfernt: %s x%d von Player %d', itemName, amount or 1, src)
+end)

@@ -121,7 +121,7 @@ local function RunPlacementPreview(model)
     return result
 end
 
-local function SpawnNetworkProp(model, coords, heading)
+local function SpawnNetworkProp(model, coords, heading, keepModel)
     local hash = GetHashKey(model)
     lib.requestModel(hash)
 
@@ -129,7 +129,10 @@ local function SpawnNetworkProp(model, coords, heading)
     SetEntityHeading(obj, Config.Scene.alignToPlayer and heading or 0.0)
     PlaceObjectOnGroundProperly(obj)
     FreezeEntityPosition(obj, true)
-    SetModelAsNoLongerNeeded(hash)
+
+    if not keepModel then
+        SetModelAsNoLongerNeeded(hash)
+    end
 
     local netId = ObjToNet(obj)
     SetNetworkIdExistsOnAllMachines(netId, true)
@@ -363,10 +366,11 @@ local function RunTwoPointPreview(model)
             PlaceObjectOnGroundProperly(ghostB)
 
             if IsControlJustPressed(0, PLACE_CONFIRM) then
+                local finalB = GetEntityCoords(ghostB)  -- Coords VOR Delete speichern
                 lib.hideTextUI()
                 DeleteObject(ghostA)
                 DeleteObject(ghostB)
-                return { pointA = pointA, pointB = GetEntityCoords(ghostB), confirmed = true }
+                return { pointA = pointA, pointB = finalB, confirmed = true }
             end
         end
 
@@ -400,49 +404,72 @@ local function PlaceBarrierLine()
 
     local pA   = placement.pointA
     local pB   = placement.pointB
-    local dist = #(vector2(pA.x, pA.y) - vector2(pB.x, pB.y))
-    local count = math.max(1, math.floor(dist / 1.5))
-    count = math.min(count, barrierItems, Config.Limits.barriers - CountProps('barriers'))
+
+    -- Abstand in 3D berechnen
+    local dx   = pB.x - pA.x
+    local dy   = pB.y - pA.y
+    local dist = math.sqrt(dx * dx + dy * dy)
+
+    -- Barrier-Prop ist ~2.5m lang → Abstand 2.5m zwischen Pfosten
+    local spacing = 2.5
+    local count   = math.max(1, math.floor(dist / spacing) + 1)
+    local maxSlots = Config.Limits.barriers - CountProps('barriers')
+    count = math.min(count, barrierItems, maxSlots)
+
+    FD.Debug('scene', 'Absperrlinie: dist=%.1fm spacing=%.1fm count=%d items=%d maxSlots=%d',
+        dist, spacing, count, barrierItems, maxSlots)
 
     if count == 0 then
-        FD.Notify('Nicht genug Platz oder Items für Absperrung.', 'warning') return
+        FD.Notify('Nicht genug Platz oder Items.', 'warning') return
     end
 
-    -- Heading von A nach B berechnen
-    local dx      = pB.x - pA.x
-    local dy      = pB.y - pA.y
+    -- Heading von A → B
     local heading = math.deg(math.atan(dx, dy)) % 360.0
 
     local done = FD.Progress(
         ('Absperrlinie aufstellen (%d Pfosten)'):format(count),
         'place',
-        count * 800
+        math.max(2000, count * 600)
     )
     if not done then return end
 
-    -- Pfosten entlang der Linie platzieren
-    for i = 0, count - 1 do
-        local t  = count > 1 and (i / (count - 1)) or 0
-        local x  = pA.x + (pB.x - pA.x) * t
-        local y  = pA.y + (pB.y - pA.y) * t
-        local fz, z = GetGroundZFor_3dCoord(x, y, pA.z + 2.0, false)
-        if not fz then z = pA.z end
+    -- Modell einmal laden
+    local hash = GetHashKey(Config.Props.barrier)
+    lib.requestModel(hash)
 
-        local obj, netId = SpawnNetworkProp(Config.Props.barrier, vector3(x, y, z), heading)
+    -- Pfosten platzieren
+    for i = 0, count - 1 do
+        local t
+        if count == 1 then
+            t = 0.0
+        else
+            t = i / (count - 1)
+        end
+
+        local x = pA.x + dx * t
+        local y = pA.y + dy * t
+        local _, z = GetGroundZFor_3dCoord(x, y, pA.z + 2.0, false)
+        if not z then z = pA.z end
+
+        FD.Debug('scene', 'Pfosten %d/%d bei t=%.2f pos=(%.1f,%.1f,%.1f)', i+1, count, t, x, y, z)
+
+        local obj, netId = SpawnNetworkProp(Config.Props.barrier, vector3(x, y, z), heading, true)
         sceneProps.barriers[#sceneProps.barriers + 1] = { obj = obj, netId = netId, item = 'safetybarrier' }
 
         TriggerServerEvent('d4rk_fd_utility:sv_registerSceneProp', netId, 'barriers', 'Absperrung', 'safetybarrier')
-        TriggerServerEvent('d4rk_fd_utility:sv_removeItem', 'safetybarrier', 1)
+        TriggerServerEvent('d4rk_fd_utility:sv_removeItemDirect', 'safetybarrier', 1)
 
+        local capturedObj   = obj
+        local capturedNetId = netId
         exports.ox_target:addLocalEntity(obj, {
             {
-                name        = 'fd_pickup_' .. tostring(obj),
+                name        = 'fd_pickup_' .. tostring(capturedObj),
                 icon        = 'fas fa-hand',
                 label       = 'Absperrung aufheben',
                 distance    = 2.5,
                 onSelect    = function()
-                    RemovePropFromCategory('barriers', obj)
-                    TriggerServerEvent('d4rk_fd_utility:sv_removeSceneProp', netId)
+                    RemovePropFromCategory('barriers', capturedObj)
+                    TriggerServerEvent('d4rk_fd_utility:sv_removeSceneProp', capturedNetId)
                     FD.Notify('Absperrung aufgehoben – Item zurück im Inventar.', 'inform')
                 end,
                 canInteract = function() return FD.HasJob() end,
@@ -450,9 +477,9 @@ local function PlaceBarrierLine()
         })
     end
 
+    SetModelAsNoLongerNeeded(hash)
     FD.SetCooldown('scene_barriers', 'barrierPlace')
-    FD.Notify(('Absperrlinie aufgestellt – %d Pfosten.'):format(count), 'success')
-    FD.Debug('scene', 'Absperrlinie: %d Pfosten von %s nach %s', count, tostring(pA), tostring(pB))
+    FD.Notify(('Absperrlinie: %d Pfosten aufgestellt.'):format(count), 'success')
 end
 
 -- ─────────────────────────────────────────────

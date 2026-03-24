@@ -9,7 +9,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
-Config.Debug         = false         -- Debug-Prints in der Console
+Config.Debug         = true         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
 
 Config.UseTarget     = true          -- ox_target für Interaktionen
