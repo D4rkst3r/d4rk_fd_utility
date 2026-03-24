@@ -23,13 +23,6 @@ local lightActive = {}   -- { [obj] = true }
 --  Cooldown-Key Mapping (Kategorie → Config.Cooldowns Key)
 -- ─────────────────────────────────────────────
 
-local categoryCooldown = {
-    cones       = 'conePlace',
-    barriers    = 'barrierPlace',
-    lightstands = 'lightPlace',
-    flares      = 'conePlace',
-}
-
 local categoryProgressTime = {
     cones       = 1500,
     barriers    = 2000,
@@ -56,7 +49,7 @@ local function GetRaycastCoords()
          math.cos(math.rad(camRot.z)) * math.abs(math.cos(math.rad(camRot.x))),
          math.sin(math.rad(camRot.x))
     )
-    local dest  = camCoords + camFwd * 10.0
+    local dest  = camCoords + camFwd * (Config.Scene.raycastDistance or 15.0)
     local ray   = StartShapeTestRay(camCoords.x, camCoords.y, camCoords.z, dest.x, dest.y, dest.z, 1 | 16, PlayerPedId(), 0)
     local _, hit, coords, _, _ = GetShapeTestResult(ray)
     if hit == 1 then return coords end
@@ -190,12 +183,20 @@ local function EnsureLightThread()
     if lightThread then return end
     lightThread = true
     CreateThread(function()
+        -- Coords-Cache: Lichtmaste sind frozen → Position nur alle 60 Frames neu holen
+        local coordCache = {}
+        local frame = 0
         while lightThread do
+            frame = frame + 1
             local any = false
             for obj, light in pairs(lightActive) do
                 if DoesEntityExist(obj) then
                     any = true
-                    local pos = GetEntityCoords(obj)
+                    -- Coords nur alle 60 Frames aktualisieren (frozen Props bewegen sich nicht)
+                    if frame % 60 == 0 or not coordCache[obj] then
+                        coordCache[obj] = GetEntityCoords(obj)
+                    end
+                    local pos = coordCache[obj]
                     DrawLightWithRange(
                         pos.x, pos.y, pos.z + (light.offset or 2.5),
                         light.r, light.g, light.b,
@@ -204,6 +205,7 @@ local function EnsureLightThread()
                     )
                 else
                     lightActive[obj] = nil
+                    coordCache[obj]  = nil
                 end
             end
             if not any then
@@ -639,7 +641,7 @@ local function OpenSceneMenu()
         },
         {
             title       = 'Absperrlinie spannen',
-            description = ('Im Inventar: %d – Zwei Punkte wählen'):format(FD.CountItem('safetybarrier')),
+            description = ('Im Inventar: %d – Zwei Punkte wählen'):format(barrierItems),
             icon        = 'fas fa-grip-lines',
             disabled    = FD.CountItem('safetybarrier') == 0 or counts.barriers >= Config.Limits.barriers,
             onSelect    = function() PlaceBarrierLine() end,

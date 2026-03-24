@@ -9,7 +9,7 @@ Config = {}
 -- ─────────────────────────────────────────────
 Config.Framework     = 'qbx'         -- 'qbx' | 'qb' | 'esx' | 'standalone'
 Config.Locale        = 'de'          -- Sprache (locales/<lang>.json)
-Config.Debug         = true         -- Debug-Prints in der Console
+Config.Debug         = false         -- Debug-Prints in der Console
 Config.Database      = 'oxmysql'     -- 'oxmysql' | 'mysql-async' | 'ghmattimysql'
 
 Config.UseTarget     = true          -- ox_target für Interaktionen
@@ -202,6 +202,9 @@ Config.Limits = {
 Config.Scene = {
     -- Abstand vor dem Spieler beim Platzieren (Meter)
     placeDistance  = 2.5,
+
+    -- Raycast-Reichweite beim Preview (Meter)
+    raycastDistance = 15.0,
 
     -- Lichtmast: Lichtfarbe (RGB)
     lightColor     = { r = 255, g = 220, b = 150 },
