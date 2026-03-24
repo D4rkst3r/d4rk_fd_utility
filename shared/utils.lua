@@ -374,6 +374,20 @@ function FD.RemoveItem(itemName, amount)
     TriggerServerEvent('d4rk_fd_utility:sv_removeItem', itemName, amount or 1)
 end
 
+---@param itemName string
+---@param amount   number
+function FD.ReturnItem(itemName, amount)
+    if not Config.UseInventory then return end
+    TriggerServerEvent('d4rk_fd_utility:sv_returnItem', itemName, amount or 1)
+end
+
+---@param itemName string
+---@return number  Anzahl im Inventar
+function FD.CountItem(itemName)
+    if not Config.UseInventory then return 99 end
+    return exports.ox_inventory:Search('count', itemName) or 0
+end
+
 -- ─────────────────────────────────────────────
 --  Notify
 -- ─────────────────────────────────────────────

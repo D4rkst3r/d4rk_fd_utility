@@ -119,14 +119,14 @@ Config.Items = {
     trafficcone = {
         label      = 'Verkehrskegel',
         required   = true,
-        consume    = true,
+        consume    = false,   -- Wird in scene.lua manuell verwaltet (Aufheben gibt Item zurück)
         durability = false,
         useTime    = 1500,
     },
     safetybarrier = {
         label      = 'Absperrband',
         required   = true,
-        consume    = true,
+        consume    = false,   -- Wird in scene.lua manuell verwaltet
         durability = false,
         useTime    = 2000,
     },

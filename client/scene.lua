@@ -38,22 +38,87 @@ local categoryProgressTime = {
 }
 
 -- ─────────────────────────────────────────────
---  Helpers
+--  Preview Placement System
+--  Raycast-basiert mit Ghost-Prop, Rotation via Q/E
+--  Bestätigen: E | Abbrechen: X oder ESC
 -- ─────────────────────────────────────────────
 
-local function GetPlaceCoords()
-    local ped     = PlayerPedId()
-    local heading = GetEntityHeading(ped)
-    local coords  = GetEntityCoords(ped)
-    local dist    = Config.Scene.placeDistance
+local PLACE_CONFIRM = 38   -- E
+local PLACE_CANCEL  = 47   -- X
+local PLACE_ROT_L   = 44   -- Q
+local PLACE_ROT_R   = 45   -- R
 
-    local x = coords.x + dist * math.sin(-math.rad(heading))
-    local y = coords.y + dist * math.cos(-math.rad(heading))
+local function GetRaycastCoords()
+    local camCoords = GetGameplayCamCoord()
+    local camRot    = GetGameplayCamRot(2)
+    local camFwd    = vector3(
+        -math.sin(math.rad(camRot.z)) * math.abs(math.cos(math.rad(camRot.x))),
+         math.cos(math.rad(camRot.z)) * math.abs(math.cos(math.rad(camRot.x))),
+         math.sin(math.rad(camRot.x))
+    )
+    local dest  = camCoords + camFwd * 10.0
+    local ray   = StartShapeTestRay(camCoords.x, camCoords.y, camCoords.z, dest.x, dest.y, dest.z, 1 | 16, PlayerPedId(), 0)
+    local _, hit, coords, _, _ = GetShapeTestResult(ray)
+    if hit == 1 then return coords end
+    -- Fallback: Boden unter Kamera-Ziel
+    local found, z = GetGroundZFor_3dCoord(dest.x, dest.y, dest.z, false)
+    return vector3(dest.x, dest.y, found and z or dest.z)
+end
 
-    local found, z = GetGroundZFor_3dCoord(x, y, coords.z + 2.0, false)
-    if not found then z = coords.z end
+-- Gibt { coords, heading } zurück oder nil wenn abgebrochen
+local function RunPlacementPreview(model)
+    local hash = GetHashKey(model)
+    lib.requestModel(hash)
 
-    return vector3(x, y, z), heading
+    -- Warten bis das Kontextmenü komplett geschlossen ist
+    Wait(200)
+
+    -- Ghost-Prop spawnen (nicht networked, nur lokal)
+    local ghost = CreateObjectNoOffset(hash, 0.0, 0.0, 0.0, false, false, false)
+    SetEntityAlpha(ghost, 150, false)
+    SetEntityCollision(ghost, false, false)
+    FreezeEntityPosition(ghost, true)
+    SetModelAsNoLongerNeeded(hash)
+
+    local heading  = GetEntityHeading(PlayerPedId())
+    local result   = nil
+
+    while not result do
+        -- TextUI in jedem Frame neu setzen damit es immer sichtbar bleibt
+        lib.showTextUI('[E] Platzieren  [Q/R] Rotieren  [X] Abbrechen', {
+            position = 'bottom-center',
+            icon     = 'fas fa-arrows-up-down-left-right',
+        })
+
+        local coords = GetRaycastCoords()
+
+        SetEntityCoords(ghost, coords.x, coords.y, coords.z, false, false, false, false)
+        SetEntityHeading(ghost, heading)
+        PlaceObjectOnGroundProperly(ghost)
+
+        if IsControlJustPressed(0, PLACE_ROT_L) then heading = (heading + 15.0) % 360.0 end
+        if IsControlJustPressed(0, PLACE_ROT_R) then heading = (heading - 15.0) % 360.0 end
+
+        if IsControlJustPressed(0, PLACE_CONFIRM) then
+            local finalCoords = GetEntityCoords(ghost)
+            result = { coords = finalCoords, heading = heading, confirmed = true }
+        end
+
+        if IsControlJustPressed(0, PLACE_CANCEL) or IsControlJustPressed(0, 200) then
+            result = { confirmed = false }
+        end
+
+        DisableControlAction(0, 24, true)
+        DisableControlAction(0, 25, true)
+        DisableControlAction(0, 140, true)
+        DisableControlAction(0, 141, true)
+
+        Wait(0)
+    end
+
+    lib.hideTextUI()
+    DeleteObject(ghost)
+    return result
 end
 
 local function SpawnNetworkProp(model, coords, heading)
@@ -146,17 +211,38 @@ end
 
 local function PlacePropWithTarget(model, category, label, cooldownKey, item, withLight, isFlare)
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
-    if item and not FD.HasItem(item) then FD.Notify(T('no_item'), 'error') return end
+
+    -- Kein Platzieren im Fahrzeug
+    if IsPedInAnyVehicle(PlayerPedId(), false) then
+        FD.Notify('Du kannst keine Props aus einem Fahrzeug heraus platzieren.', 'error')
+        return
+    end
 
     local cdKey = 'scene_' .. category
     if not FD.CheckCooldown(cdKey) then FD.Notify(T('cooldown'), 'warning') return end
 
-    local limit = Config.Limits[category] or 10
-    if CountProps(category) >= limit then
-        FD.Notify(('%s Limit erreicht (%d/%d)'):format(label, limit, limit), 'warning')
+    local configLimit = Config.Limits[category] or 10
+    local itemCount   = item and FD.CountItem(item) or configLimit
+    local limit       = math.min(configLimit, itemCount)
+
+    if item and itemCount == 0 then
+        FD.Notify(('Keine %s im Inventar.'):format(label), 'error')
         return
     end
 
+    if CountProps(category) >= limit then
+        FD.Notify(('%s Limit erreicht – noch %d Item(s) übrig'):format(label, itemCount), 'warning')
+        return
+    end
+
+    -- Preview-Modus: Spieler wählt Position mit Ghost-Prop
+    local placement = RunPlacementPreview(model)
+    if not placement or not placement.confirmed then
+        FD.Notify('Platzierung abgebrochen.', 'inform')
+        return
+    end
+
+    -- Progress Bar nach Bestätigung
     local done = FD.Progress(
         ('Stelle %s auf'):format(label),
         'place',
@@ -164,20 +250,16 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
     )
     if not done then return end
 
-    local coords, heading = GetPlaceCoords()
-    local obj, netId      = SpawnNetworkProp(model, coords, heading)
+    local obj, netId = SpawnNetworkProp(model, placement.coords, placement.heading)
 
-    sceneProps[category][#sceneProps[category] + 1] = { obj = obj, netId = netId }
+    sceneProps[category][#sceneProps[category] + 1] = { obj = obj, netId = netId, item = item }
 
-    -- Lichtmast: zentralen Light-Thread starten
     if withLight then
         lightActive[obj] = { r = Config.Scene.lightColor.r, g = Config.Scene.lightColor.g, b = Config.Scene.lightColor.b, range = Config.Scene.lightRange, intensity = Config.Scene.lightIntensity, offset = 2.5 }
         EnsureLightThread()
     end
 
-    -- Fackel: Partikeleffekt + oranges Licht
     if isFlare then
-        -- Partikeleffekt anhängen
         lib.requestNamedPtfxAsset('core')
         UseParticleFxAssetNextCall('core')
         local ptfx = StartParticleFxLoopedOnEntity(
@@ -186,16 +268,11 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
             0.0, 0.0, 0.0,
             0.5, false, false, false
         )
-
-        -- Oranges Licht für Fackel
         lightActive[obj] = { r = 255, g = 80, b = 0, range = 8.0, intensity = 5.0, offset = 0.2 }
         EnsureLightThread()
-
-        -- Partikel beim Entfernen stoppen – in Entry speichern
         sceneProps[category][#sceneProps[category]].ptfx = ptfx
     end
 
-    -- ox_target zum Aufheben
     exports.ox_target:addLocalEntity(obj, {
         {
             name     = 'fd_pickup_' .. tostring(obj),
@@ -203,26 +280,27 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
             label    = label .. ' aufheben',
             distance = 2.5,
             onSelect = function()
-                -- Partikel stoppen falls Fackel
                 for _, entry in ipairs(sceneProps[category]) do
                     if entry.obj == obj and entry.ptfx then
                         StopParticleFxLooped(entry.ptfx, false)
                     end
                 end
                 RemovePropFromCategory(category, obj)
-                if item and Config.Items[item] and not Config.Items[item].consume then
-                    -- Nicht-konsumierbare Items zurückgeben
+                if item then
+                    FD.ReturnItem(item, 1)
+                    FD.Notify(label .. ' aufgehoben – Item zurück im Inventar.', 'inform')
+                else
+                    FD.Notify(label .. ' aufgehoben.', 'inform')
                 end
-                FD.Notify(label .. ' aufgehoben.', 'inform')
             end,
             canInteract = function() return FD.HasJob() end,
         }
     })
 
+    if item then TriggerServerEvent('d4rk_fd_utility:sv_removeItem', item, 1) end
     FD.SetCooldown(cdKey, cooldownKey)
-    if item then FD.RemoveItem(item, 1) end
     FD.Notify(label .. ' aufgestellt.', 'success')
-    FD.Debug('scene', '%s platziert | NetID %d | Pos %s', label, netId, tostring(coords))
+    FD.Debug('scene', '%s platziert | NetID %d', label, netId)
 
     return obj
 end
@@ -258,23 +336,26 @@ local function OpenSceneMenu()
 
     -- Einmal zählen, nicht pro Option
     local counts = GetAllCounts()
+    local coneItems    = FD.CountItem('trafficcone')
+    local barrierItems = FD.CountItem('safetybarrier')
+    local lightItems   = FD.CountItem('lightstand')
 
     local options = {
         -- ── Kegel ────────────────────────────
         {
             title       = 'Kegel aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.cones, Config.Limits.cones),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(coneItems, counts.cones, Config.Limits.cones),
             icon        = 'fas fa-traffic-cone',
-            disabled    = counts.cones >= Config.Limits.cones,
+            disabled    = coneItems == 0 or counts.cones >= Config.Limits.cones,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.cone, 'cones', 'Verkehrskegel', 'conePlace', 'trafficcone')
             end,
         },
         {
             title       = 'Großen Kegel aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.cones, Config.Limits.cones),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(coneItems, counts.cones, Config.Limits.cones),
             icon        = 'fas fa-traffic-cone',
-            disabled    = counts.cones >= Config.Limits.cones,
+            disabled    = coneItems == 0 or counts.cones >= Config.Limits.cones,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.coneBig, 'cones', 'Großer Kegel', 'conePlace', 'trafficcone')
             end,
@@ -283,18 +364,18 @@ local function OpenSceneMenu()
         -- ── Absperrung ───────────────────────
         {
             title       = 'Absperrung aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.barriers, Config.Limits.barriers),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(barrierItems, counts.barriers, Config.Limits.barriers),
             icon        = 'fas fa-do-not-enter',
-            disabled    = counts.barriers >= Config.Limits.barriers,
+            disabled    = barrierItems == 0 or counts.barriers >= Config.Limits.barriers,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.barrier, 'barriers', 'Absperrung', 'barrierPlace', 'safetybarrier')
             end,
         },
         {
             title       = 'Lange Absperrung aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.barriers, Config.Limits.barriers),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(barrierItems, counts.barriers, Config.Limits.barriers),
             icon        = 'fas fa-do-not-enter',
-            disabled    = counts.barriers >= Config.Limits.barriers,
+            disabled    = barrierItems == 0 or counts.barriers >= Config.Limits.barriers,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.barrierLong, 'barriers', 'Lange Absperrung', 'barrierPlace', 'safetybarrier')
             end,
@@ -312,18 +393,18 @@ local function OpenSceneMenu()
         -- ── Lichtmast ────────────────────────
         {
             title       = 'Lichtmast aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.lightstands, Config.Limits.lightstands),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(lightItems, counts.lightstands, Config.Limits.lightstands),
             icon        = 'fas fa-lightbulb',
-            disabled    = counts.lightstands >= Config.Limits.lightstands,
+            disabled    = lightItems == 0 or counts.lightstands >= Config.Limits.lightstands,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.lightstand, 'lightstands', 'Lichtmast', 'lightPlace', 'lightstand', true)
             end,
         },
         {
             title       = 'Großen Lichtmast aufstellen',
-            description = ('Platziert: %d/%d'):format(counts.lightstands, Config.Limits.lightstands),
+            description = ('Im Inventar: %d | Platziert: %d/%d'):format(lightItems, counts.lightstands, Config.Limits.lightstands),
             icon        = 'fas fa-lightbulb',
-            disabled    = counts.lightstands >= Config.Limits.lightstands,
+            disabled    = lightItems == 0 or counts.lightstands >= Config.Limits.lightstands,
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.lightstandBig, 'lightstands', 'Großer Lichtmast', 'lightPlace', 'lightstand', true)
             end,

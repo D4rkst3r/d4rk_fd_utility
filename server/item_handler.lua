@@ -48,8 +48,20 @@ RegisterNetEvent('d4rk_fd_utility:sv_removeItem', function(itemName, amount)
 end)
 
 -- ─────────────────────────────────────────────
---  Cleanup bei Disconnect
+--  Item zurückgeben (z.B. Prop aufheben)
 -- ─────────────────────────────────────────────
+
+RegisterNetEvent('d4rk_fd_utility:sv_returnItem', function(itemName, amount)
+    local src = source
+    if not Config.UseInventory then return end
+    if not SvHasJob(src) then return end
+
+    local cfg = Config.Items[itemName]
+    if not cfg then return end
+
+    exports.ox_inventory:AddItem(src, itemName, amount or 1)
+    FD.Debug('general', 'Item zurückgegeben: %s x%d an Player %d', itemName, amount or 1, src)
+end)
 
 AddEventHandler('playerDropped', function(reason)
     local src = source
