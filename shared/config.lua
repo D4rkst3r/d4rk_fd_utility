@@ -307,13 +307,33 @@ Config.Props = {
     oilPatch      = 'p_oil_slick_01',       -- Automatisch unter Gefahrgut-Fahrzeug
     oilBarrier    = 'prop_conc_sacks_02a',  -- Vom Spieler platzierte Sperre (Item)
     -- TODO: Hand-Props während Animation
-    jerrycan   = 'prop_ld_jerrycan_01',  -- Kanister in Hand beim Ausgießen
-    broom      = 'prop_tool_broom2',     -- Besen in Hand beim Kehren
+    -- jerrycan   = 'prop_ld_jerrycan_01',  -- Kanister in Hand beim Ausgießen
+    -- broom      = 'prop_tool_broom2',     -- Besen in Hand beim Kehren
 }
 
 -- ─────────────────────────────────────────────
---  ox_target – Konfiguration
+--  Prop Attachments
+--  Daten aus d4rk_prop_tool – direkt hier eintragen
 -- ─────────────────────────────────────────────
+Config.Attachments = {
+    sweep = {
+        prop     = 'prop_tool_broom2',
+        bone     = 'SKEL_R_Hand',
+        boneId   = 28422,
+        offset   = { x = -0.02, y = 0.02, z = -0.565 },
+        rotation = { x = -38.5, y = 1.0,  z = 2.0    },
+        animDict = 'anim@amb@drug_field_workers@rake@male_b@base',
+        animClip = 'base',
+    },
+    pour = {
+        prop     = 'prop_ld_jerrycan_01',
+        boneId   = 28422,
+        offset   = { x = 0.015, y = 0.085, z = -0.04 },
+        rotation = { x = -94.5, y = -9.0,  z = 171.0 },
+        animDict = 'weapons@first_person@aim_idle@remote_clone@misc@jerrycan@',
+        animClip = 'fire',
+    },
+}
 Config.Target = {
     icon     = 'fas fa-fire-extinguisher',
     distance = 4.0,

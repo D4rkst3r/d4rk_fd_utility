@@ -528,8 +528,83 @@ function FD.ClearAllProps()
 end
 
 -- ─────────────────────────────────────────────
---  Module Guard – prüft ob ein Modul aktiv ist
+--  Anim + Prop System
+--  Nutzt Attachment-Daten direkt aus d4rk_prop_tool JSON-Format
 -- ─────────────────────────────────────────────
+
+---@param label      string   Progress-Bar Label
+---@param attachment table    Eintrag aus attachments.json (prop, boneId, offset, rotation, animDict, animClip)
+---@param duration   number   ms
+---@return boolean   true = fertig, false = abgebrochen
+function FD.PlayAnimWithProp(label, attachment, duration)
+    if not attachment then return FD.Progress(label, nil, duration) end
+
+    local ped  = PlayerPedId()
+    local prop = nil
+
+    -- Prop spawnen und anhängen
+    if attachment.prop and attachment.prop ~= '' then
+        local hash = GetHashKey(attachment.prop)
+        if IsModelValid(hash) then
+            lib.requestModel(hash)
+            prop = CreateObject(hash, 0.0, 0.0, 0.0, false, false, false)
+            SetModelAsNoLongerNeeded(hash)
+            SetEntityNoCollisionEntity(prop, ped, true)
+
+            local o = attachment.offset   or { x = 0.0, y = 0.0, z = 0.0 }
+            local r = attachment.rotation or { x = 0.0, y = 0.0, z = 0.0 }
+
+            AttachEntityToEntity(
+                prop, ped,
+                GetPedBoneIndex(ped, attachment.boneId or 28422),
+                o.x or 0.0, o.y or 0.0, o.z or 0.0,
+                r.x or 0.0, r.y or 0.0, r.z or 0.0,
+                true, true, false, true, 1, true
+            )
+        else
+            FD.Debug('props', 'PlayAnimWithProp: ungültiges Modell %s', attachment.prop)
+        end
+    end
+
+    -- Animation als animKey-kompatibler Temp-Eintrag
+    local tempKey = nil
+    if attachment.animDict and attachment.animClip then
+        -- Erst prüfen ob der AnimDict überhaupt gültig ist
+        local dictOk = pcall(function()
+            lib.requestAnimDict(attachment.animDict)
+        end)
+
+        if dictOk and HasAnimDictLoaded(attachment.animDict) then
+            tempKey = '__prop_anim_temp__'
+            Config.Anims[tempKey] = {
+                dict = attachment.animDict,
+                clip = attachment.animClip,
+                flag = attachment.animFlag or 1,
+            }
+        else
+            -- Fallback: Basis-Animation die immer funktioniert
+            FD.Debug('props', 'PlayAnimWithProp: AnimDict nicht geladen "%s" – nutze Fallback', attachment.animDict)
+            tempKey = '__prop_anim_temp__'
+            Config.Anims[tempKey] = {
+                dict = 'amb@world_human_gardener_plant@male@base',
+                clip = 'base',
+                flag = 1,
+            }
+        end
+    end
+
+    -- Progress Bar mit Animation
+    local done = FD.Progress(label, tempKey, duration)
+
+    -- Aufräumen
+    if tempKey then Config.Anims[tempKey] = nil end
+    if prop then
+        DetachEntity(prop, false, false)
+        DeleteObject(prop)
+    end
+
+    return done
+end
 
 ---@param name string  Key aus Config.Modules
 ---@return boolean

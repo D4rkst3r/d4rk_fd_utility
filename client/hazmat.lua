@@ -326,7 +326,11 @@ local function MarkVehicleHazmat(vehicle)
                     if not FD.HasItem('oilabsorbent') then
                         FD.Notify('Kein Ölbindemittel im Inventar.', 'error') return
                     end
-                    local done = FD.Progress('Ölbindemittel auftragen', 'pour', Config.Items.oilabsorbent.useTime)
+                    local done = FD.PlayAnimWithProp(
+                        'Ölbindemittel auftragen',
+                        Config.Attachments.pour,
+                        Config.Items.oilabsorbent.useTime
+                    )
                     if not done then return end
 
                     if oilObj and DoesEntityExist(oilObj) then
@@ -352,7 +356,7 @@ local function MarkVehicleHazmat(vehicle)
                     if not FD.HasItem('broom') then
                         FD.Notify('Kein Besen im Inventar.', 'error') return
                     end
-                    local done = FD.Progress('Ölbindemittel zusammenkehren', 'sweep', 8000)
+                    local done = FD.PlayAnimWithProp('Ölbindemittel zusammenkehren', Config.Attachments.sweep, 8000)
                     if not done then return end
 
                     if oilObj and DoesEntityExist(oilObj) then DeleteObject(oilObj) end
