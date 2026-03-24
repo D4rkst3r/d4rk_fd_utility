@@ -611,3 +611,46 @@ end
 function FD.ModuleEnabled(name)
     return Config.Modules[name] == true
 end
+
+-- ─────────────────────────────────────────────
+--  Vehicle Target Manager
+--  Mehrere Module können Optionen am selben Fahrzeug
+--  registrieren ohne sich gegenseitig zu überschreiben
+-- ─────────────────────────────────────────────
+
+FD._vehicleTargets = {}  -- { [vehicle] = { [moduleKey] = { options } } }
+
+local function RebuildVehicleTarget(vehicle)
+    if not DoesEntityExist(vehicle) then return end
+    local allOptions = {}
+    for _, opts in pairs(FD._vehicleTargets[vehicle] or {}) do
+        for _, opt in ipairs(opts) do
+            allOptions[#allOptions + 1] = opt
+        end
+    end
+    exports.ox_target:removeLocalEntity(vehicle)
+    if #allOptions > 0 then
+        exports.ox_target:addLocalEntity(vehicle, allOptions)
+    end
+end
+
+function FD.SetVehicleOptions(vehicle, moduleKey, options)
+    if not DoesEntityExist(vehicle) then return end
+    FD._vehicleTargets[vehicle] = FD._vehicleTargets[vehicle] or {}
+    FD._vehicleTargets[vehicle][moduleKey] = options
+    RebuildVehicleTarget(vehicle)
+end
+
+function FD.ClearVehicleOptions(vehicle, moduleKey)
+    if not FD._vehicleTargets[vehicle] then return end
+    FD._vehicleTargets[vehicle][moduleKey] = nil
+    RebuildVehicleTarget(vehicle)
+    if not next(FD._vehicleTargets[vehicle]) then
+        FD._vehicleTargets[vehicle] = nil
+    end
+end
+
+function FD.ClearAllVehicleOptions(vehicle)
+    FD._vehicleTargets[vehicle] = nil
+    exports.ox_target:removeLocalEntity(vehicle)
+end

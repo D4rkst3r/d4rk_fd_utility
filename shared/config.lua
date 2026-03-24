@@ -30,7 +30,8 @@ Config.Modules = {
 
 -- Extrication – Zusatz-Optionen
 Config.Extrication = {
-    onlyWrecked = false,   -- true → Target nur auf beschädigten Fahrzeugen anzeigen
+    onlyWrecked  = false,  -- true → Target nur auf beschädigten Fahrzeugen
+    allVehicles  = true,   -- true → auch NPC-Fahrzeuge (ignoriert PlayerVehicles Check)
 }
 
 -- HazMat – Konfiguration
@@ -293,7 +294,7 @@ Config.Anims = {
 -- ─────────────────────────────────────────────
 Config.Props = {
     -- Extrication
-    wheel         = 'prop_byard_tyres_01',
+    wheel         = 'prop_air_chock_04',
 
     -- Scene Management
     cone          = 'prop_mp_cone_01',

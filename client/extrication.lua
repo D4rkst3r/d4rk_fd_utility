@@ -633,7 +633,7 @@ CreateThread(function()
         if not FD.HasJob() then
             if next(activeTargets) then
                 for vehicle in pairs(activeTargets) do
-                    if DoesEntityExist(vehicle) then exports.ox_target:removeLocalEntity(vehicle) end
+                    FD.ClearVehicleOptions(vehicle, 'extrication')
                     activeTargets[vehicle]      = nil
                     stabilizedVehicles[vehicle] = nil
                 end
@@ -654,13 +654,14 @@ CreateThread(function()
                 if #(GetEntityCoords(vehicle) - pCoords) > 30.0 then return end
                 if Config.Extrication.onlyWrecked and not IsVehicleWrecked(vehicle) then return end
 
-                if Config.PlayerVehicles.enabled then
+                -- allVehicles = true → PlayerVehicles-Check überspringen
+                if not Config.Extrication.allVehicles and Config.PlayerVehicles.enabled then
                     local known = FD.IsPlayerVehicle(vehicle)
                     if known == false then return end
                     if known == nil then
                         FD.PrefetchVehicle(vehicle, function(isPlayer)
                             if isPlayer and not activeTargets[vehicle] and DoesEntityExist(vehicle) then
-                                exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
+                                FD.SetVehicleOptions(vehicle, 'extrication', BuildTargetOptions(vehicle))
                                 activeTargets[vehicle] = true
                                 FD.Debug('target', 'Target nachregistriert (async): Fahrzeug %d', vehicle)
                             end
@@ -669,7 +670,7 @@ CreateThread(function()
                     end
                 end
 
-                exports.ox_target:addLocalEntity(vehicle, BuildTargetOptions(vehicle))
+                FD.SetVehicleOptions(vehicle, 'extrication', BuildTargetOptions(vehicle))
                 activeTargets[vehicle] = true
                 FD.Debug('target', 'Target gesetzt: Fahrzeug %d', vehicle)
             end
@@ -727,7 +728,7 @@ AddEventHandler('onResourceStop', function(res)
     if res ~= GetCurrentResourceName() then return end
     HideProgressLog()
     for vehicle in pairs(activeTargets) do
-        if DoesEntityExist(vehicle) then exports.ox_target:removeLocalEntity(vehicle) end
+        FD.ClearVehicleOptions(vehicle, 'extrication')
     end
     for vehicle in pairs(stabilizedVehicles) do
         if DoesEntityExist(vehicle) then FreezeEntityPosition(vehicle, false) end

@@ -266,6 +266,7 @@ local function MarkVehicleHazmat(vehicle)
                 table.remove(oilProps, i)
             end
         end
+        FD.ClearVehicleOptions(vehicle, 'hazmat')
         FD.Notify('Gefahrgut-Kennzeichnung entfernt.', 'inform')
     else
         -- Markierung setzen
@@ -376,10 +377,8 @@ local function MarkVehicleHazmat(vehicle)
             },
         }
 
-        -- Bestehenden Target ersetzen
-        exports.ox_target:removeLocalEntity(vehicle)
-        Wait(100)
-        exports.ox_target:addLocalEntity(vehicle, oilTargetOptions)
+        -- Hazmat-Optionen über Target Manager setzen (überschreibt nicht Extrication)
+        FD.SetVehicleOptions(vehicle, 'hazmat', oilTargetOptions)
         activeTargets[vehicle] = true
 
         FD.Debug('hazmat', 'Öl-Pfütze gespawnt unter Fahrzeug %d', vehicle)
@@ -473,9 +472,7 @@ CreateThread(function()
         if not FD.HasJob() then
             -- Alle Targets räumen
             for vehicle in pairs(activeTargets) do
-                if DoesEntityExist(vehicle) then
-                    exports.ox_target:removeLocalEntity(vehicle)
-                end
+                FD.ClearVehicleOptions(vehicle, 'hazmat')
                 activeTargets[vehicle] = nil
             end
             Wait(5000)
@@ -486,7 +483,7 @@ CreateThread(function()
             if closest and closest ~= 0 and not activeTargets[closest] then
                 local isMarked = FD.State.Get(closest, 'hazmat', 'hazmat_zone') == true
 
-                exports.ox_target:addLocalEntity(closest, {
+                FD.SetVehicleOptions(closest, 'hazmat', {
                     {
                         name     = 'fd_hazmat_mark',
                         icon     = 'fas fa-biohazard',
@@ -503,7 +500,7 @@ CreateThread(function()
             for vehicle in pairs(activeTargets) do
                 if not DoesEntityExist(vehicle) or
                    #(pCoords - GetEntityCoords(vehicle)) > 15.0 then
-                    exports.ox_target:removeLocalEntity(vehicle)
+                    FD.ClearVehicleOptions(vehicle, 'hazmat')
                     activeTargets[vehicle] = nil
                 end
             end
@@ -616,7 +613,7 @@ AddEventHandler('onResourceStop', function(res)
     end
     -- Targets räumen
     for vehicle in pairs(activeTargets) do
-        if DoesEntityExist(vehicle) then exports.ox_target:removeLocalEntity(vehicle) end
+        FD.ClearVehicleOptions(vehicle, 'hazmat')
     end
 end)
 
