@@ -316,6 +316,7 @@ Config.Props = {
 --  Daten aus d4rk_prop_tool – direkt hier eintragen
 -- ─────────────────────────────────────────────
 Config.Attachments = {
+    -- ── HazMat ───────────────────────────────
     sweep = {
         prop     = 'prop_tool_broom2',
         bone     = 'SKEL_R_Hand',
@@ -328,10 +329,37 @@ Config.Attachments = {
     pour = {
         prop     = 'prop_ld_jerrycan_01',
         boneId   = 28422,
-        offset   = { x = 0.015, y = 0.085, z = -0.04 },
-        rotation = { x = -94.5, y = -9.0,  z = 171.0 },
+        offset   = { x = 0.085, y = 0.015, z = -0.04 },
+        rotation = { x = -9.0,  y = -94.5, z = 171.0 },
         animDict = 'weapons@first_person@aim_idle@remote_clone@misc@jerrycan@',
         animClip = 'fire',
+    },
+
+    -- ── Extrication ──────────────────────────
+    -- Offsets mit d4rk_prop_tool suchen, dann hier eintragen
+    spreizer = {
+        prop     = 'prop_tool_blowtorch',  -- Platzhalter → ersetzen wenn gefunden
+        boneId   = 28422,
+        offset   = { x = 0.0, y = 0.0, z = 0.0 },
+        rotation = { x = 0.0, y = 0.0, z = 0.0 },
+        animDict = 'amb@world_human_gardener_plant@male@base',
+        animClip = 'base',
+    },
+    saw = {
+        prop     = 'prop_tool_grinder',    -- Platzhalter → ersetzen wenn gefunden
+        boneId   = 28422,
+        offset   = { x = 0.0, y = 0.0, z = 0.0 },
+        rotation = { x = 0.0, y = 0.0, z = 0.0 },
+        animDict = 'amb@world_human_gardener_plant@male@base',
+        animClip = 'base',
+    },
+    tirecutters = {
+        prop     = 'prop_tool_pliers',     -- Platzhalter → ersetzen wenn gefunden
+        boneId   = 28422,
+        offset   = { x = 0.0, y = 0.0, z = 0.0 },
+        rotation = { x = 0.0, y = 0.0, z = 0.0 },
+        animDict = 'amb@world_human_gardener_plant@male@base',
+        animClip = 'base',
     },
 }
 Config.Target = {

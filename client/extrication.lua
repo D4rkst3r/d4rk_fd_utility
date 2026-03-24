@@ -353,9 +353,10 @@ local function OpenExtricationMenu(vehicle)
                               or nil
                     if not item then FD.Notify(T('no_item'), 'error') return end
 
-                    local done2 = FD.Progress(
+                    local attachKey = item == 'hydraulicspreader' and 'spreizer' or 'saw'
+                    local done2 = FD.PlayAnimWithProp(
                         ('Entferne %s'):format(label),
-                        item == 'hydraulicspreader' and 'spreizer' or 'saw',
+                        Config.Attachments[attachKey],
                         Config.Items[item].useTime
                     )
                     if not done2 then return end
@@ -418,7 +419,7 @@ local function OpenExtricationMenu(vehicle)
                 if not CanInteract('tireRemove', vehicle) then return end
                 if not FD.HasItem('tirecutters') then FD.Notify(T('no_item'), 'error') return end
 
-                local done2 = FD.Progress(('Schneide %s ab'):format(label), 'saw', Config.Items.tirecutters.useTime)
+                local done2 = FD.PlayAnimWithProp(('Schneide %s ab'):format(label), Config.Attachments.tirecutters, Config.Items.tirecutters.useTime)
                 if not done2 then return end
                 if not RequestControl(vehicle) then FD.Notify('Fahrzeug nicht erreichbar.', 'error') return end
 
@@ -451,9 +452,9 @@ local function OpenExtricationMenu(vehicle)
                 onSelect    = function()
                     if not CanInteract('tireRemove', vehicle) then return end
 
-                    local done = FD.Progress(
+                    local done = FD.PlayAnimWithProp(
                         ('Entferne %s'):format(label),
-                        'spreizer',
+                        Config.Attachments.spreizer,
                         Config.Items.hydraulicspreader.useTime
                     )
                     if not done then return end
@@ -480,7 +481,7 @@ local function OpenExtricationMenu(vehicle)
             if not CanInteract('doorRemove', vehicle) then return end
             if not FD.HasItem('rescuesaw') then FD.Notify(T('no_item'), 'error') return end
 
-            local done = FD.Progress('Dach aufschneiden', 'saw', Config.Items.rescuesaw.useTime + 2000)
+            local done = FD.PlayAnimWithProp('Dach aufschneiden', Config.Attachments.saw, Config.Items.rescuesaw.useTime + 2000)
             if not done then return end
             if not RequestControl(vehicle) then FD.Notify('Fahrzeug nicht erreichbar.', 'error') return end
 
@@ -506,7 +507,7 @@ local function OpenExtricationMenu(vehicle)
         onSelect    = function()
             if not CanInteract('doorRemove', vehicle) then return end
 
-            local done = FD.Progress('Batterie entfernen', 'spreizer', 6000)
+            local done = FD.PlayAnimWithProp('Batterie entfernen', Config.Attachments.spreizer, 6000)
             if not done then return end
             if not RequestControl(vehicle) then FD.Notify('Fahrzeug nicht erreichbar.', 'error') return end
 
