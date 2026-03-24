@@ -54,11 +54,11 @@ local function PutOnSuit()
 
     wearingSuit = true
 
-    -- Spieler-Komponente ändern (Schutzanzug-Look)
-    -- Outfit wird je nach PED-Modell gesetzt
+    -- Outfit aus Config anziehen
     local ped = PlayerPedId()
-    SetPedComponentVariation(ped, 8, 15, 0, 0)  -- Oberkörper
-    SetPedComponentVariation(ped, 11, 55, 0, 0) -- Torso
+    for _, comp in ipairs(Config.HazMat.suit) do
+        SetPedComponentVariation(ped, comp.component, comp.drawable, comp.texture, comp.palette or 0)
+    end
 
     -- Anderen Spielern mitteilen
     TriggerServerEvent('d4rk_fd_utility:sv_hazmatSuit', true)

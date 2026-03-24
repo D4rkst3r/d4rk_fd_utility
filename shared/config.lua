@@ -36,13 +36,23 @@ Config.Extrication = {
 
 -- HazMat – Konfiguration
 Config.HazMat = {
-    oilBarrierSpacing       = 1.5,     -- Abstand zwischen Ölsperren-Props (Meter)
+    oilBarrierSpacing       = 1.5,
     zoneColor               = { r = 255, g = 165, b = 0,   a = 80  },
     zoneColorBorder         = { r = 255, g = 100, b = 0,   a = 200 },
-    suitProtection          = 100,     -- Schutz-Level mit Anzug (0-100)
-    deconTime               = 15000,   -- Dekontamination Dauer (ms)
-    autoContaminate         = true,    -- Spieler ohne Anzug in Zone kontaminieren
-    contaminateCheckInterval = 2000,   -- Kontaminierungs-Check Interval (ms)
+    suitProtection          = 100,
+    deconTime               = 15000,
+    autoContaminate         = true,
+    contaminateCheckInterval = 2000,
+ 
+    -- Anzug Outfit-Komponenten
+    -- { component, drawable, texture, palette }
+    suit = {
+        { component = 1,  drawable = 175, texture = 0, palette = 0 },  -- Maske
+        { component = 3,  drawable = 88,  texture = 1, palette = 0 },  -- Arme
+        { component = 4,  drawable = 40,  texture = 0, palette = 0 },  -- Hose
+        { component = 6,  drawable = 25,  texture = 0, palette = 0 },  -- Schuhe
+        { component = 11, drawable = 67,  texture = 0, palette = 0 },  -- Torso
+    },
 }
 
 -- ─────────────────────────────────────────────
