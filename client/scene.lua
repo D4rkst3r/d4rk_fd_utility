@@ -286,8 +286,8 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
                     end
                 end
                 RemovePropFromCategory(category, obj)
+                TriggerServerEvent('d4rk_fd_utility:sv_removeSceneProp', netId)
                 if item then
-                    FD.ReturnItem(item, 1)
                     FD.Notify(label .. ' aufgehoben – Item zurück im Inventar.', 'inform')
                 else
                     FD.Notify(label .. ' aufgehoben.', 'inform')
@@ -298,6 +298,8 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
     })
 
     if item then TriggerServerEvent('d4rk_fd_utility:sv_removeItem', item, 1) end
+    -- Prop beim Server registrieren für andere FD-Spieler
+    TriggerServerEvent('d4rk_fd_utility:sv_registerSceneProp', netId, category, label, item)
     FD.SetCooldown(cdKey, cooldownKey)
     FD.Notify(label .. ' aufgestellt.', 'success')
     FD.Debug('scene', '%s platziert | NetID %d', label, netId)
@@ -306,8 +308,211 @@ local function PlacePropWithTarget(model, category, label, cooldownKey, item, wi
 end
 
 -- ─────────────────────────────────────────────
---  Alles räumen
+--  Absperrband: Zwei-Punkt System
 -- ─────────────────────────────────────────────
+
+local function RunTwoPointPreview(model)
+    local hash = GetHashKey(model)
+    lib.requestModel(hash)
+    Wait(200)
+
+    -- Ghost für Punkt A
+    local ghostA = CreateObjectNoOffset(hash, 0.0, 0.0, 0.0, false, false, false)
+    SetEntityAlpha(ghostA, 150, false)
+    SetEntityCollision(ghostA, false, false)
+    FreezeEntityPosition(ghostA, true)
+
+    -- Ghost für Punkt B
+    local ghostB = CreateObjectNoOffset(hash, 0.0, 0.0, 0.0, false, false, false)
+    SetEntityAlpha(ghostB, 100, false)
+    SetEntityCollision(ghostB, false, false)
+    FreezeEntityPosition(ghostB, true)
+    SetModelAsNoLongerNeeded(hash)
+
+    local pointA    = nil
+    local confirmed = false
+
+    while not confirmed do
+        local coords = GetRaycastCoords()
+
+        if not pointA then
+            -- Phase 1: Punkt A wählen
+            lib.showTextUI('[E] Punkt A setzen  [X] Abbrechen', {
+                position = 'bottom-center',
+                icon     = 'fas fa-map-pin',
+            })
+            SetEntityCoords(ghostA, coords.x, coords.y, coords.z, false, false, false, false)
+            PlaceObjectOnGroundProperly(ghostA)
+            SetEntityCoords(ghostB, coords.x, coords.y, coords.z, false, false, false, false)
+
+            if IsControlJustPressed(0, PLACE_CONFIRM) then
+                pointA = GetEntityCoords(ghostA)
+            end
+        else
+            -- Phase 2: Punkt B wählen, Vorschau der ganzen Linie
+            local pointB = coords
+            local dist   = #(vector2(pointA.x, pointA.y) - vector2(pointB.x, pointB.y))
+            local needed = math.max(1, math.floor(dist / 1.5))
+
+            lib.showTextUI(('[E] Bestätigen  [X] Abbrechen  |  Länge: %.1fm  Pfosten: ~%d'):format(dist, needed), {
+                position = 'bottom-center',
+                icon     = 'fas fa-ruler',
+            })
+
+            SetEntityCoords(ghostB, pointB.x, pointB.y, pointB.z, false, false, false, false)
+            PlaceObjectOnGroundProperly(ghostB)
+
+            if IsControlJustPressed(0, PLACE_CONFIRM) then
+                lib.hideTextUI()
+                DeleteObject(ghostA)
+                DeleteObject(ghostB)
+                return { pointA = pointA, pointB = GetEntityCoords(ghostB), confirmed = true }
+            end
+        end
+
+        if IsControlJustPressed(0, PLACE_CANCEL) or IsControlJustPressed(0, 200) then
+            lib.hideTextUI()
+            DeleteObject(ghostA)
+            DeleteObject(ghostB)
+            return { confirmed = false }
+        end
+
+        DisableControlAction(0, 24, true)
+        DisableControlAction(0, 25, true)
+        Wait(0)
+    end
+end
+
+local function PlaceBarrierLine()
+    if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
+    if IsPedInAnyVehicle(PlayerPedId(), false) then
+        FD.Notify('Du kannst keine Props aus einem Fahrzeug heraus platzieren.', 'error') return
+    end
+    if not FD.CheckCooldown('scene_barriers') then FD.Notify(T('cooldown'), 'warning') return end
+
+    local barrierItems = FD.CountItem('safetybarrier')
+    if barrierItems == 0 then FD.Notify('Keine Absperrungen im Inventar.', 'error') return end
+
+    local placement = RunTwoPointPreview(Config.Props.barrier)
+    if not placement or not placement.confirmed then
+        FD.Notify('Platzierung abgebrochen.', 'inform') return
+    end
+
+    local pA   = placement.pointA
+    local pB   = placement.pointB
+    local dist = #(vector2(pA.x, pA.y) - vector2(pB.x, pB.y))
+    local count = math.max(1, math.floor(dist / 1.5))
+    count = math.min(count, barrierItems, Config.Limits.barriers - CountProps('barriers'))
+
+    if count == 0 then
+        FD.Notify('Nicht genug Platz oder Items für Absperrung.', 'warning') return
+    end
+
+    -- Heading von A nach B berechnen
+    local dx      = pB.x - pA.x
+    local dy      = pB.y - pA.y
+    local heading = math.deg(math.atan(dx, dy)) % 360.0
+
+    local done = FD.Progress(
+        ('Absperrlinie aufstellen (%d Pfosten)'):format(count),
+        'place',
+        count * 800
+    )
+    if not done then return end
+
+    -- Pfosten entlang der Linie platzieren
+    for i = 0, count - 1 do
+        local t  = count > 1 and (i / (count - 1)) or 0
+        local x  = pA.x + (pB.x - pA.x) * t
+        local y  = pA.y + (pB.y - pA.y) * t
+        local fz, z = GetGroundZFor_3dCoord(x, y, pA.z + 2.0, false)
+        if not fz then z = pA.z end
+
+        local obj, netId = SpawnNetworkProp(Config.Props.barrier, vector3(x, y, z), heading)
+        sceneProps.barriers[#sceneProps.barriers + 1] = { obj = obj, netId = netId, item = 'safetybarrier' }
+
+        TriggerServerEvent('d4rk_fd_utility:sv_registerSceneProp', netId, 'barriers', 'Absperrung', 'safetybarrier')
+        TriggerServerEvent('d4rk_fd_utility:sv_removeItem', 'safetybarrier', 1)
+
+        exports.ox_target:addLocalEntity(obj, {
+            {
+                name        = 'fd_pickup_' .. tostring(obj),
+                icon        = 'fas fa-hand',
+                label       = 'Absperrung aufheben',
+                distance    = 2.5,
+                onSelect    = function()
+                    RemovePropFromCategory('barriers', obj)
+                    TriggerServerEvent('d4rk_fd_utility:sv_removeSceneProp', netId)
+                    FD.Notify('Absperrung aufgehoben – Item zurück im Inventar.', 'inform')
+                end,
+                canInteract = function() return FD.HasJob() end,
+            }
+        })
+    end
+
+    FD.SetCooldown('scene_barriers', 'barrierPlace')
+    FD.Notify(('Absperrlinie aufgestellt – %d Pfosten.'):format(count), 'success')
+    FD.Debug('scene', 'Absperrlinie: %d Pfosten von %s nach %s', count, tostring(pA), tostring(pB))
+end
+
+-- ─────────────────────────────────────────────
+--  Fremde Props: Server-Sync Handler
+-- ─────────────────────────────────────────────
+
+-- { [netId] = true } – Props von anderen Spielern wo wir bereits Target gesetzt haben
+local foreignTargets = {}
+
+RegisterNetEvent('d4rk_fd_utility:cl_scenePropSync', function(netId, category, label, item, ownerSrc)
+    if not FD.HasJob() then return end
+
+    -- nil = Prop wurde entfernt
+    if not category then
+        if foreignTargets[netId] then
+            local obj = NetToObj(netId)
+            if obj and obj ~= 0 then
+                exports.ox_target:removeLocalEntity(obj)
+            end
+            foreignTargets[netId] = nil
+        end
+        return
+    end
+
+    -- Eigene Props nicht doppelt registrieren
+    if ownerSrc == GetPlayerServerId(PlayerId()) then return end
+
+    -- Kurz warten bis Objekt im Netzwerk verfügbar
+    SetTimeout(500, function()
+        local obj = NetToObj(netId)
+        if not obj or obj == 0 or not DoesEntityExist(obj) then return end
+        if foreignTargets[netId] then return end
+
+        foreignTargets[netId] = true
+
+        exports.ox_target:addLocalEntity(obj, {
+            {
+                name        = 'fd_pickup_foreign_' .. tostring(netId),
+                icon        = 'fas fa-hand',
+                label       = (label or 'Prop') .. ' aufheben',
+                distance    = 2.5,
+                onSelect    = function()
+                    -- Server entfernt das Obj und gibt Item zurück
+                    TriggerServerEvent('d4rk_fd_utility:sv_removeSceneProp', netId)
+                    foreignTargets[netId] = nil
+                    -- Obj lokal löschen
+                    if DoesEntityExist(obj) then
+                        exports.ox_target:removeLocalEntity(obj)
+                        DeleteObject(obj)
+                    end
+                    FD.Notify((label or 'Prop') .. ' aufgehoben.', 'inform')
+                end,
+                canInteract = function() return FD.HasJob() end,
+            }
+        })
+        FD.Debug('scene', 'Fremdes Prop registriert: NetID %d (%s)', netId, label or '?')
+    end)
+end)
+
+
 
 local function ClearAllScene()
     local total = 0
@@ -388,6 +593,13 @@ local function OpenSceneMenu()
             onSelect    = function()
                 PlacePropWithTarget(Config.Props.warningSign, 'barriers', 'Warnzeichen', 'barrierPlace', nil)
             end,
+        },
+        {
+            title       = 'Absperrlinie spannen',
+            description = ('Im Inventar: %d – Zwei Punkte wählen'):format(FD.CountItem('safetybarrier')),
+            icon        = 'fas fa-grip-lines',
+            disabled    = FD.CountItem('safetybarrier') == 0 or counts.barriers >= Config.Limits.barriers,
+            onSelect    = function() PlaceBarrierLine() end,
         },
 
         -- ── Lichtmast ────────────────────────
