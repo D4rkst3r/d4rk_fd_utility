@@ -80,21 +80,28 @@ local function RunPlacementPreview(model)
     FreezeEntityPosition(ghost, true)
     SetModelAsNoLongerNeeded(hash)
 
-    local heading  = GetEntityHeading(PlayerPedId())
-    local result   = nil
+    local heading   = GetEntityHeading(PlayerPedId())
+    local result    = nil
+    local lastCoords = vector3(0, 0, 0)
+
+    -- TextUI einmal setzen, nicht jeden Frame
+    lib.showTextUI('[E] Platzieren  [Q/R] Rotieren  [X] Abbrechen', {
+        position = 'bottom-center',
+        icon     = 'fas fa-arrows-up-down-left-right',
+    })
 
     while not result do
-        -- TextUI in jedem Frame neu setzen damit es immer sichtbar bleibt
-        lib.showTextUI('[E] Platzieren  [Q/R] Rotieren  [X] Abbrechen', {
-            position = 'bottom-center',
-            icon     = 'fas fa-arrows-up-down-left-right',
-        })
-
         local coords = GetRaycastCoords()
 
         SetEntityCoords(ghost, coords.x, coords.y, coords.z, false, false, false, false)
         SetEntityHeading(ghost, heading)
-        PlaceObjectOnGroundProperly(ghost)
+
+        -- PlaceObjectOnGroundProperly nur wenn Coords sich geändert haben
+        local moved = #(coords - lastCoords) > 0.1
+        if moved then
+            PlaceObjectOnGroundProperly(ghost)
+            lastCoords = coords
+        end
 
         if IsControlJustPressed(0, PLACE_ROT_L) then heading = (heading + 15.0) % 360.0 end
         if IsControlJustPressed(0, PLACE_ROT_R) then heading = (heading - 15.0) % 360.0 end
@@ -332,47 +339,56 @@ local function RunTwoPointPreview(model)
     FreezeEntityPosition(ghostB, true)
     SetModelAsNoLongerNeeded(hash)
 
-    local pointA    = nil
-    local confirmed = false
+    local pointA     = nil
+    local confirmed  = false
+    local lastCoords = vector3(0, 0, 0)
+    local lastPhase  = nil  -- 'A' oder 'B' – TextUI nur bei Phasenwechsel neu setzen
 
     while not confirmed do
         local coords = GetRaycastCoords()
+        local moved  = #(coords - lastCoords) > 0.1
 
         if not pointA then
-            -- Phase 1: Punkt A wählen
-            lib.showTextUI('[E] Punkt A setzen  [X] Abbrechen', {
-                position = 'bottom-center',
-                icon     = 'fas fa-map-pin',
-            })
+            if lastPhase ~= 'A' then
+                lib.showTextUI('[E] Punkt A setzen  [X] Abbrechen', {
+                    position = 'bottom-center',
+                    icon     = 'fas fa-map-pin',
+                })
+                lastPhase = 'A'
+            end
+
             SetEntityCoords(ghostA, coords.x, coords.y, coords.z, false, false, false, false)
-            PlaceObjectOnGroundProperly(ghostA)
+            if moved then PlaceObjectOnGroundProperly(ghostA) end
             SetEntityCoords(ghostB, coords.x, coords.y, coords.z, false, false, false, false)
 
             if IsControlJustPressed(0, PLACE_CONFIRM) then
                 pointA = GetEntityCoords(ghostA)
+                lastPhase = nil  -- Phase wechselt → TextUI neu setzen
             end
         else
-            -- Phase 2: Punkt B wählen, Vorschau der ganzen Linie
             local pointB = coords
             local dist   = #(vector2(pointA.x, pointA.y) - vector2(pointB.x, pointB.y))
-            local needed = math.max(1, math.floor(dist / 1.5))
+            local needed = math.max(1, math.floor(dist / 2.5) + 1)
 
+            -- TextUI nur aktualisieren wenn sich Anzahl oder Phase geändert hat
             lib.showTextUI(('[E] Bestätigen  [X] Abbrechen  |  Länge: %.1fm  Pfosten: ~%d'):format(dist, needed), {
                 position = 'bottom-center',
                 icon     = 'fas fa-ruler',
             })
 
             SetEntityCoords(ghostB, pointB.x, pointB.y, pointB.z, false, false, false, false)
-            PlaceObjectOnGroundProperly(ghostB)
+            if moved then PlaceObjectOnGroundProperly(ghostB) end
 
             if IsControlJustPressed(0, PLACE_CONFIRM) then
-                local finalB = GetEntityCoords(ghostB)  -- Coords VOR Delete speichern
+                local finalB = GetEntityCoords(ghostB)
                 lib.hideTextUI()
                 DeleteObject(ghostA)
                 DeleteObject(ghostB)
                 return { pointA = pointA, pointB = finalB, confirmed = true }
             end
         end
+
+        if moved then lastCoords = coords end
 
         if IsControlJustPressed(0, PLACE_CANCEL) or IsControlJustPressed(0, 200) then
             lib.hideTextUI()
