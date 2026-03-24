@@ -259,14 +259,11 @@ local function MarkVehicleHazmat(vehicle)
         -- Öl-Pfütze unter dem Fahrzeug entfernen
         for i = #oilProps, 1, -1 do
             local entry = oilProps[i]
-            if entry.isLeak then
-                local vCoords  = GetEntityCoords(vehicle)
-                local oCoords  = DoesEntityExist(entry.obj) and GetEntityCoords(entry.obj) or nil
-                if oCoords and #(vector2(vCoords.x, vCoords.y) - vector2(oCoords.x, oCoords.y)) < 5.0 then
-                    exports.ox_target:removeLocalEntity(entry.obj)
-                    if DoesEntityExist(entry.obj) then DeleteObject(entry.obj) end
-                    table.remove(oilProps, i)
+            if entry.isLeak and entry.vehicle == vehicle then
+                if entry.obj and DoesEntityExist(entry.obj) then
+                    DeleteObject(entry.obj)
                 end
+                table.remove(oilProps, i)
             end
         end
         FD.Notify('Gefahrgut-Kennzeichnung entfernt.', 'inform')
@@ -291,85 +288,95 @@ local function MarkVehicleHazmat(vehicle)
 
         local oilHash = GetHashKey(Config.Props.oilPatch)
         lib.requestModel(oilHash)
-        local oilObj = CreateObjectNoOffset(oilHash, vCoords.x, vCoords.y, groundZ, true, true, false)
-        SetEntityHeading(oilObj, GetEntityHeading(vehicle))
-        FreezeEntityPosition(oilObj, true)
-        SetModelAsNoLongerNeeded(oilHash)
 
-        local oilNetId = ObjToNet(oilObj)
-        SetNetworkIdExistsOnAllMachines(oilNetId, true)
-
-        local oilEntry = { obj = oilObj, netId = oilNetId, isLeak = true, absorbed = false }
-        oilProps[#oilProps + 1] = oilEntry
-
-        -- ox_target auf die Öl-Pfütze: Schritt 1 → Ölbindemittel
-        local function UpdateOilTarget()
-            exports.ox_target:removeLocalEntity(oilObj)
-
-            if not oilEntry.absorbed then
-                -- Schritt 1: Ölbindemittel auftragen
-                exports.ox_target:addLocalEntity(oilObj, {{
-                    name        = 'fd_oil_absorb_' .. tostring(oilObj),
-                    icon        = 'fas fa-fill-drip',
-                    label       = 'Ölbindemittel auftragen',
-                    distance    = 2.5,
-                    canInteract = function()
-                        return FD.HasJob() and FD.HasItem('oilabsorbent')
-                    end,
-                    onSelect    = function()
-                        if not FD.HasItem('oilabsorbent') then
-                            FD.Notify('Kein Ölbindemittel im Inventar.', 'error') return
-                        end
-                        local done = FD.Progress('Ölbindemittel auftragen', 'pour', Config.Items.oilabsorbent.useTime)
-                        if not done then return end
-
-                        -- Visuell: Pfütze aufhellen (Alpha reduzieren)
-                        if DoesEntityExist(oilObj) then
-                            SetEntityAlpha(oilObj, 100, false)
-                        end
-                        oilEntry.absorbed = true
-                        FD.RemoveItem('oilabsorbent', 1)
-                        FD.Notify('Ölbindemittel aufgetragen – jetzt kehren!', 'inform')
-                        UpdateOilTarget()
-                    end,
-                }})
-            else
-                -- Schritt 2: Kehren
-                exports.ox_target:addLocalEntity(oilObj, {{
-                    name        = 'fd_oil_sweep_' .. tostring(oilObj),
-                    icon        = 'fas fa-wind',
-                    label       = 'Ölbindemittel zusammenkehren',
-                    distance    = 2.5,
-                    canInteract = function()
-                        return FD.HasJob() and FD.HasItem('broom')
-                    end,
-                    onSelect    = function()
-                        if not FD.HasItem('broom') then
-                            FD.Notify('Kein Besen im Inventar.', 'error') return
-                        end
-                        local done = FD.Progress('Ölbindemittel zusammenkehren', 'sweep', 8000)
-                        if not done then return end
-
-                        -- Pfütze entfernen
-                        exports.ox_target:removeLocalEntity(oilObj)
-                        if DoesEntityExist(oilObj) then DeleteObject(oilObj) end
-
-                        -- Aus oilProps entfernen
-                        for i = #oilProps, 1, -1 do
-                            if oilProps[i].obj == oilObj then
-                                table.remove(oilProps, i)
-                                break
-                            end
-                        end
-
-                        FD.Notify('Ölpfütze beseitigt – Bereich gesichert.', 'success')
-                        FD.Debug('hazmat', 'Ölpfütze unter Fahrzeug %d beseitigt', vehicle)
-                    end,
-                }})
-            end
+        local oilObj = nil
+        if IsModelValid(oilHash) then
+            oilObj = CreateObjectNoOffset(oilHash, vCoords.x, vCoords.y, groundZ, true, true, false)
+            SetEntityHeading(oilObj, GetEntityHeading(vehicle))
+            FreezeEntityPosition(oilObj, true)
+            SetModelAsNoLongerNeeded(oilHash)
+            FD.Debug('hazmat', 'Öl-Pfütze gespawnt: obj=%d', oilObj)
+        else
+            FD.Debug('hazmat', 'Warnung: p_oil_slick_01 ungültig – kein visuelles Prop')
         end
 
-        UpdateOilTarget()
+        local oilEntry = { obj = oilObj, isLeak = true, absorbed = false, vehicle = vehicle }
+        oilProps[#oilProps + 1] = oilEntry
+
+        -- Target auf das Fahrzeug – alle Öl-Optionen auf einmal registrieren
+        -- disabled wird dynamisch per canInteract gesteuert (kein Re-Register nötig)
+        local oilTargetOptions = {
+            {
+                name        = 'fd_hazmat_mark',
+                icon        = 'fas fa-biohazard',
+                label       = 'Gefahrgut-Kennzeichnung entfernen',
+                distance    = 4.0,
+                onSelect    = function() MarkVehicleHazmat(vehicle) end,
+                canInteract = function() return FD.HasJob() end,
+            },
+            {
+                name        = 'fd_oil_absorb',
+                icon        = 'fas fa-fill-drip',
+                label       = 'Ölbindemittel auftragen',
+                distance    = 4.0,
+                onSelect    = function()
+                    if oilEntry.absorbed then
+                        FD.Notify('Ölbindemittel bereits aufgetragen – jetzt kehren!', 'warning') return
+                    end
+                    if not FD.HasItem('oilabsorbent') then
+                        FD.Notify('Kein Ölbindemittel im Inventar.', 'error') return
+                    end
+                    local done = FD.Progress('Ölbindemittel auftragen', 'pour', Config.Items.oilabsorbent.useTime)
+                    if not done then return end
+
+                    if oilObj and DoesEntityExist(oilObj) then
+                        SetEntityAlpha(oilObj, 100, false)
+                    end
+                    oilEntry.absorbed = true
+                    FD.RemoveItem('oilabsorbent', 1)
+                    FD.Notify('Ölbindemittel aufgetragen – jetzt kehren!', 'inform')
+                end,
+                canInteract = function()
+                    return FD.HasJob() and not oilEntry.absorbed
+                end,
+            },
+            {
+                name        = 'fd_oil_sweep',
+                icon        = 'fas fa-broom',
+                label       = 'Ölbindemittel zusammenkehren',
+                distance    = 4.0,
+                onSelect    = function()
+                    if not oilEntry.absorbed then
+                        FD.Notify('Zuerst Ölbindemittel auftragen!', 'warning') return
+                    end
+                    if not FD.HasItem('broom') then
+                        FD.Notify('Kein Besen im Inventar.', 'error') return
+                    end
+                    local done = FD.Progress('Ölbindemittel zusammenkehren', 'sweep', 8000)
+                    if not done then return end
+
+                    if oilObj and DoesEntityExist(oilObj) then DeleteObject(oilObj) end
+
+                    for i = #oilProps, 1, -1 do
+                        if oilProps[i] == oilEntry then
+                            table.remove(oilProps, i) break
+                        end
+                    end
+
+                    FD.Notify('Ölpfütze beseitigt – Bereich gesichert.', 'success')
+                    FD.Debug('hazmat', 'Ölpfütze unter Fahrzeug %d beseitigt', vehicle)
+                end,
+                canInteract = function()
+                    return FD.HasJob() and oilEntry.absorbed
+                end,
+            },
+        }
+
+        -- Bestehenden Target ersetzen
+        exports.ox_target:removeLocalEntity(vehicle)
+        Wait(100)
+        exports.ox_target:addLocalEntity(vehicle, oilTargetOptions)
+        activeTargets[vehicle] = true
 
         FD.Debug('hazmat', 'Öl-Pfütze gespawnt unter Fahrzeug %d', vehicle)
 

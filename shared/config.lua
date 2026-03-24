@@ -275,14 +275,16 @@ Config.Anims = {
         flag  = 49,
     },
     pour = {
-        dict  = 'weapons@misc@jerrycan',
+        dict  = 'weapons@first_person@aim_idle@remote_clone@misc@jerrycan@',
         clip  = 'fire',
         flag  = 1,
+        -- TODO: Hand-Prop prop_ld_jerrycan_01 während Animation spawnen
     },
     sweep = {
-        dict  = 'amb@world_human_janitor@male@idle_02',
-        clip  = 'idle_02',
+        dict  = 'anim@amb@drug_field_workers@rake@male_b@base',
+        clip  = 'base',
         flag  = 1,
+        -- TODO: Hand-Prop prop_tool_broom2 während Animation spawnen
     },
 }
 
@@ -304,6 +306,9 @@ Config.Props = {
     flare         = 'prop_flare_01',
     oilPatch      = 'p_oil_slick_01',       -- Automatisch unter Gefahrgut-Fahrzeug
     oilBarrier    = 'prop_conc_sacks_02a',  -- Vom Spieler platzierte Sperre (Item)
+    -- TODO: Hand-Props während Animation
+    jerrycan   = 'prop_ld_jerrycan_01',  -- Kanister in Hand beim Ausgießen
+    broom      = 'prop_tool_broom2',     -- Besen in Hand beim Kehren
 }
 
 -- ─────────────────────────────────────────────
