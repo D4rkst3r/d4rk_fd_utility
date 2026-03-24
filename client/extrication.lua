@@ -708,7 +708,7 @@ CreateThread(function()
                 local gone = not DoesEntityExist(vehicle)
                 local far  = not gone and #(pCoords - GetEntityCoords(vehicle)) > 40.0
                 if gone or far then
-                    if not gone then exports.ox_target:removeLocalEntity(vehicle) end
+                    if not gone then FD.ClearVehicleOptions(vehicle, 'extrication') end
                     activeTargets[vehicle]      = nil
                     stabilizedVehicles[vehicle] = nil
                 end
