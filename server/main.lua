@@ -73,3 +73,78 @@ AddEventHandler('playerDropped', function()
         end
     end
 end)
+
+-- ─────────────────────────────────────────────
+--  HazMat
+-- ─────────────────────────────────────────────
+
+local suitPlayers        = {}   -- { [src] = true }  – Spieler mit Anzug
+local contaminatedPlayers = {}  -- { [src] = true }  – kontaminierte Spieler
+local hazmatZones        = {}   -- { { src, x, y, z, radius } }
+
+-- Anzug Status sync
+RegisterNetEvent('d4rk_fd_utility:sv_hazmatSuit', function(wearing)
+    local src = source
+    suitPlayers[src] = wearing or nil
+    FD.Debug('hazmat', 'Player %d Anzug: %s', src, tostring(wearing))
+end)
+
+-- Kontamination sync
+RegisterNetEvent('d4rk_fd_utility:sv_hazmatContaminated', function(state)
+    local src = source
+    contaminatedPlayers[src] = state or nil
+    FD.Debug('hazmat', 'Player %d kontaminiert: %s', src, tostring(state))
+end)
+
+-- Gefahrenzone setzen/entfernen
+RegisterNetEvent('d4rk_fd_utility:sv_hazmatZone', function(x, y, z, radius, active)
+    local src = source
+    if active then
+        -- Alte Zone dieses Spielers ersetzen
+        for i, zone in ipairs(hazmatZones) do
+            if zone.src == src then table.remove(hazmatZones, i) break end
+        end
+        hazmatZones[#hazmatZones + 1] = { src = src, x = x, y = y, z = z, radius = radius }
+        -- Alle anderen FD-Spieler informieren
+        TriggerClientEvent('d4rk_fd_utility:cl_hazmatZone', -1, x, y, z, radius, true)
+        FD.Debug('hazmat', 'Zone gesetzt von Player %d – Radius %d', src, radius)
+    else
+        for i, zone in ipairs(hazmatZones) do
+            if zone.src == src then table.remove(hazmatZones, i) break end
+        end
+        TriggerClientEvent('d4rk_fd_utility:cl_hazmatZone', -1, 0, 0, 0, 0, false)
+    end
+end)
+
+-- Dekontamination eines anderen Spielers
+RegisterNetEvent('d4rk_fd_utility:sv_decontaminate', function(targetSrc)
+    local src = source
+    if not targetSrc then return end
+    contaminatedPlayers[targetSrc] = nil
+    TriggerClientEvent('d4rk_fd_utility:cl_contaminated', targetSrc, false)
+    FD.Debug('hazmat', 'Player %d dekontaminiert von Player %d', targetSrc, src)
+end)
+
+-- Neuer Spieler → aktive Zonen schicken
+AddEventHandler('playerJoining', function()
+    local src = source
+    SetTimeout(2500, function()
+        for _, zone in ipairs(hazmatZones) do
+            TriggerClientEvent('d4rk_fd_utility:cl_hazmatZone', src, zone.x, zone.y, zone.z, zone.radius, true)
+        end
+    end)
+end)
+
+-- Disconnect → Zonen + States aufräumen
+AddEventHandler('playerDropped', function()
+    local src = source
+    suitPlayers[src]         = nil
+    contaminatedPlayers[src] = nil
+    for i, zone in ipairs(hazmatZones) do
+        if zone.src == src then
+            table.remove(hazmatZones, i)
+            TriggerClientEvent('d4rk_fd_utility:cl_hazmatZone', -1, 0, 0, 0, 0, false)
+            break
+        end
+    end
+end)

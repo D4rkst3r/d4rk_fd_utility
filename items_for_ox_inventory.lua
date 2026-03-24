@@ -44,12 +44,36 @@
     description = 'Platzierbare Ölsperre / Barriere',
 },
 
+['oilabsorbent'] = {
+    label       = 'Ölbindemittel',
+    weight      = 2000,
+    stack       = true,
+    close       = true,
+    description = 'Ölbindemittel – auf Kraftstoffaustritt auftragen',
+},
+
+['broom'] = {
+    label       = 'Besen',
+    weight      = 1500,
+    stack       = false,
+    close       = false,
+    description = 'Besen – Ölbindemittel zusammenkehren',
+},
+
 ['hazmatsuit'] = {
     label       = 'HazMat Anzug',
     weight      = 8000,
     stack       = false,
     close       = true,
     description = 'Schutzanzug für HazMat-Einsätze',
+},
+
+['deconkit'] = {
+    label       = 'Dekontaminationskit',
+    weight      = 3000,
+    stack       = true,
+    close       = true,
+    description = 'Dekontaminationskit – entfernt Kontamination von Spielern',
 },
 
 -- ── Scene Management ─────────────────────────────────────

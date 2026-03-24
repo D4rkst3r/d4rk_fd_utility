@@ -33,6 +33,17 @@ Config.Extrication = {
     onlyWrecked = false,   -- true → Target nur auf beschädigten Fahrzeugen anzeigen
 }
 
+-- HazMat – Konfiguration
+Config.HazMat = {
+    oilBarrierSpacing       = 1.5,     -- Abstand zwischen Ölsperren-Props (Meter)
+    zoneColor               = { r = 255, g = 165, b = 0,   a = 80  },
+    zoneColorBorder         = { r = 255, g = 100, b = 0,   a = 200 },
+    suitProtection          = 100,     -- Schutz-Level mit Anzug (0-100)
+    deconTime               = 15000,   -- Dekontamination Dauer (ms)
+    autoContaminate         = true,    -- Spieler ohne Anzug in Zone kontaminieren
+    contaminateCheckInterval = 2000,   -- Kontaminierungs-Check Interval (ms)
+}
+
 -- ─────────────────────────────────────────────
 --  Spieler-Fahrzeug Erkennung
 -- ─────────────────────────────────────────────
@@ -108,11 +119,32 @@ Config.Items = {
         durability = false,
         useTime    = 3000,
     },
+    oilabsorbent = {
+        label      = 'Ölbindemittel',
+        required   = true,
+        consume    = true,
+        durability = false,
+        useTime    = 5000,
+    },
+    broom = {
+        label      = 'Besen',
+        required   = true,
+        consume    = false,
+        durability = false,
+        useTime    = 0,
+    },
     hazmatsuit = {
         label      = 'HazMat Anzug',
         required   = false,
         consume    = false,
         durability = true,
+        useTime    = 0,
+    },
+    deconkit = {
+        label      = 'Dekontaminationskit',
+        required   = true,
+        consume    = true,
+        durability = false,
         useTime    = 0,
     },
     -- Scene Management
@@ -242,6 +274,16 @@ Config.Anims = {
         clip  = 'base',
         flag  = 49,
     },
+    pour = {
+        dict  = 'weapons@misc@jerrycan',
+        clip  = 'fire',
+        flag  = 1,
+    },
+    sweep = {
+        dict  = 'amb@world_human_janitor@male@idle_02',
+        clip  = 'idle_02',
+        flag  = 1,
+    },
 }
 
 -- ─────────────────────────────────────────────
@@ -260,7 +302,8 @@ Config.Props = {
     lightstandBig = 'prop_worklight_04a',
     warningSign   = 'prop_mp_arrow_barrier_01',
     flare         = 'prop_flare_01',
-    oilPatch      = 'prop_oil_slick_01',
+    oilPatch      = 'p_oil_slick_01',       -- Automatisch unter Gefahrgut-Fahrzeug
+    oilBarrier    = 'prop_conc_sacks_02a',  -- Vom Spieler platzierte Sperre (Item)
 }
 
 -- ─────────────────────────────────────────────
