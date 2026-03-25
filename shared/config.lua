@@ -43,7 +43,7 @@ Config.HazMat = {
     deconTime               = 15000,
     autoContaminate         = true,
     contaminateCheckInterval = 2000,
- 
+
     -- Anzug Outfit-Komponenten
     -- { component, drawable, texture, palette }
     suit = {
@@ -55,9 +55,23 @@ Config.HazMat = {
     },
 }
 
--- ─────────────────────────────────────────────
---  Spieler-Fahrzeug Erkennung
--- ─────────────────────────────────────────────
+-- Equipment – Konfiguration
+Config.Equipment = {
+    -- Thermocam Timecycle Effekt
+    thermocamModifier  = 'thermal',       -- Timecycle für Wärmebildkamera
+    thermocamStrength  = 1.0,
+
+    -- Feuerlöscher Custom Weapon
+    extinguisherWeapon = 'WEAPON_FIREEXTINGUISHER',  -- Hash oder custom weapon name
+
+    -- Atemschutzmaske Outfit-Komponenten
+    -- Leer lassen wenn keine Komponenten geändert werden sollen
+    gasmask = {
+        { component = 175, drawable = 0, texture = 0, palette = 0 },  -- Maske – anpassen!
+    },
+}
+
+
 Config.PlayerVehicles = {
     enabled               = true,
 
@@ -195,6 +209,20 @@ Config.Items = {
         durability = false,
         useTime    = 0,
     },
+    ladder = {
+        label      = 'Leiter',
+        required   = true,
+        consume    = false,
+        durability = false,
+        useTime    = 2000,
+    },
+    gasmask = {
+        label      = 'Atemschutzmaske',
+        required   = false,
+        consume    = false,
+        durability = true,
+        useTime    = 0,
+    },
     -- Patient
     spineboard = {
         label      = 'Spineboard',
@@ -223,6 +251,7 @@ Config.Cooldowns = {
     conePlace    = 1500,
     barrierPlace = 2000,
     lightPlace   = 3000,
+    ladderPlace  = 2000,
     extract      = 10000,
     triage       = 2000,
 }
@@ -237,6 +266,7 @@ Config.Limits = {
     oilPatches   = 6,
     fireSigns    = 6,
     flares       = 8,
+    ladders      = 4,
 }
 
 -- ─────────────────────────────────────────────
@@ -304,7 +334,7 @@ Config.Anims = {
 -- ─────────────────────────────────────────────
 Config.Props = {
     -- Extrication
-    wheel         = 'prop_air_chock_04',
+    wheel         = 'prop_byard_tyres_01',
 
     -- Scene Management
     cone          = 'prop_mp_cone_01',
@@ -315,8 +345,11 @@ Config.Props = {
     lightstandBig = 'prop_worklight_04a',
     warningSign   = 'prop_mp_arrow_barrier_01',
     flare         = 'prop_flare_01',
-    oilPatch      = 'p_oil_slick_01',       -- Automatisch unter Gefahrgut-Fahrzeug
-    oilBarrier    = 'prop_conc_sacks_02a',  -- Vom Spieler platzierte Sperre (Item)
+    oilPatch      = 'p_oil_slick_01',
+    oilBarrier    = 'prop_conc_sacks_02a',
+    -- Leitern
+    ladderSmall   = 'prop_ladder_01a',    -- Kleine Leiter
+    ladderLong    = 'prop_ladder_03a',    -- Große Leiter
     -- TODO: Hand-Props während Animation
     -- jerrycan   = 'prop_ld_jerrycan_01',  -- Kanister in Hand beim Ausgießen
     -- broom      = 'prop_tool_broom2',     -- Besen in Hand beim Kehren

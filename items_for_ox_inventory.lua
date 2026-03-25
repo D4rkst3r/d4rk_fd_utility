@@ -118,6 +118,22 @@
     description = 'Tragbarer CO₂-Feuerlöscher',
 },
 
+['ladder'] = {
+    label       = 'Leiter',
+    weight      = 12000,
+    stack       = false,
+    close       = false,
+    description = 'Tragbare Leiter für den Feuerwehreinsatz',
+},
+
+['gasmask'] = {
+    label       = 'Atemschutzmaske',
+    weight      = 2000,
+    stack       = false,
+    close       = true,
+    description = 'Atemschutzmaske – Schutz vor Rauch und Gasen',
+},
+
 -- ── Patient ──────────────────────────────────────────────
 ['spineboard'] = {
     label       = 'Spineboard',
