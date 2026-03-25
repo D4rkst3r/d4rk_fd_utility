@@ -153,8 +153,10 @@ local function ToggleGasmask()
         FD.Notify(T('equip_gasmask_on'), 'success')
         FD.Debug('equipment', 'Atemschutzmaske an')
     else
-        -- Nur Masken-Komponente zurücksetzen (component 1)
-        SetPedComponentVariation(ped, 1, 0, 0, 0)
+        -- Alle konfigurierten Komponenten zurücksetzen
+        for _, comp in ipairs(Config.Equipment.gasmask or {}) do
+            SetPedComponentVariation(ped, comp.component, 0, 0, 0)
+        end
         TriggerServerEvent('d4rk_fd_utility:sv_equipGasmask', false)
         FD.Notify(T('equip_gasmask_off'), 'inform')
         FD.Debug('equipment', 'Atemschutzmaske aus')
