@@ -67,7 +67,7 @@ Config.Equipment = {
     -- Atemschutzmaske Outfit-Komponenten
     -- Leer lassen wenn keine Komponenten geändert werden sollen
     gasmask = {
-        { component = 175, drawable = 0, texture = 0, palette = 0 },  -- Maske – anpassen!
+        { component = 1, drawable = 175, texture = 0, palette = 0 },  -- Maske – anpassen!
     },
 }
 

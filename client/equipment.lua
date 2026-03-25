@@ -25,11 +25,17 @@ local function ToggleThermocam()
     thermocamActive = not thermocamActive
 
     if thermocamActive then
-        SetTimecycleModifier(Config.Equipment.thermocamModifier or 'thermal')
-        SetTimecycleModifierStrength(Config.Equipment.thermocamStrength or 1.0)
+        -- Thermal Vision: SetSeethrough ist der korrekte Native für Wärmebildkamera
+        SetSeethrough(true)
+        -- Optional: zusätzlicher Timecycle-Effekt (konfigurierbar)
+        if Config.Equipment.thermocamModifier and Config.Equipment.thermocamModifier ~= '' then
+            SetTimecycleModifier(Config.Equipment.thermocamModifier)
+            SetTimecycleModifierStrength(Config.Equipment.thermocamStrength or 1.0)
+        end
         FD.Notify(T('equip_thermocam_on'), 'success')
         FD.Debug('equipment', 'Thermocam aktiviert')
     else
+        SetSeethrough(false)
         ClearTimecycleModifier()
         FD.Notify(T('equip_thermocam_off'), 'inform')
         FD.Debug('equipment', 'Thermocam deaktiviert')
@@ -188,8 +194,6 @@ lib.addRadialItem({
                 icon        = 'fas fa-fire-extinguisher',
                 description = HasPedGotWeapon(PlayerPedId(), GetHashKey(Config.Equipment.extinguisherWeapon or 'WEAPON_FIREEXTINGUISHER'), false)
                               and T('equip_active') or T('equip_inactive'),
-                disabled    = not FD.HasItem('fireextinguisher')
-                              and not HasPedGotWeapon(PlayerPedId(), GetHashKey(Config.Equipment.extinguisherWeapon or 'WEAPON_FIREEXTINGUISHER'), false),
                 onSelect    = ToggleExtinguisher,
             },
             {
