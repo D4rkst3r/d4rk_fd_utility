@@ -43,10 +43,10 @@ local activeTargets    = {}      -- Fahrzeuge mit HazMat-Target
 
 local function PutOnSuit()
     if wearingSuit then
-        FD.Notify('HazMat Anzug bereits an.', 'warning') return
+        FD.Notify(T('hazmat_suit_already_on'), 'warning') return
     end
     if not FD.HasItem('hazmatsuit') then
-        FD.Notify('Kein HazMat Anzug im Inventar.', 'error') return
+        FD.Notify(T('hazmat_suit_no_item'), 'error') return
     end
 
     local done = FD.Progress('HazMat Anzug anziehen', 'place', 5000)
@@ -63,13 +63,13 @@ local function PutOnSuit()
     -- Anderen Spielern mitteilen
     TriggerServerEvent('d4rk_fd_utility:sv_hazmatSuit', true)
 
-    FD.Notify('HazMat Anzug angezogen – Schutz aktiv.', 'success')
+    FD.Notify(T('hazmat_suit_on'), 'success')
     FD.Debug('hazmat', 'Anzug angezogen')
 end
 
 local function TakeOffSuit()
     if not wearingSuit then
-        FD.Notify('Du trägst keinen HazMat Anzug.', 'warning') return
+        FD.Notify(T('hazmat_suit_not_wearing'), 'warning') return
     end
 
     local done = FD.Progress('HazMat Anzug ausziehen', 'place', 3000)
@@ -82,7 +82,7 @@ local function TakeOffSuit()
     SetPedDefaultComponentVariation(ped)
 
     TriggerServerEvent('d4rk_fd_utility:sv_hazmatSuit', false)
-    FD.Notify('HazMat Anzug ausgezogen.', 'inform')
+    FD.Notify(T('hazmat_suit_off'), 'inform')
     FD.Debug('hazmat', 'Anzug ausgezogen')
 end
 
@@ -95,7 +95,7 @@ local function SetContaminated(state)
     contaminated = state
 
     if state then
-        FD.Notify('⚠ Kontaminiert! Sofort dekontaminieren!', 'error', 8000)
+        FD.Notify(T('hazmat_contaminated'), 'error', 8000)
         -- Visueller Effekt: leichte rote Tönung
         SetTimecycleModifier('damage')
         SetTimecycleModifierStrength(0.3)
@@ -111,7 +111,7 @@ end
 local function Decontaminate(target)
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
     if not FD.HasItem('deconkit') then
-        FD.Notify('Kein Dekontaminationskit vorhanden.', 'error') return
+        FD.Notify(T('hazmat_decon_no_item'), 'error') return
     end
 
     local label = target and 'Spieler dekontaminieren' or 'Selbst dekontaminieren'
@@ -126,7 +126,7 @@ local function Decontaminate(target)
     end
 
     FD.RemoveItem('deconkit', 1)
-    FD.Notify('Dekontamination abgeschlossen.', 'success')
+    FD.Notify(T('hazmat_decon_done'), 'success')
 end
 
 -- ─────────────────────────────────────────────
@@ -136,10 +136,10 @@ end
 local function PlaceOilBarrier()
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
     if IsPedInAnyVehicle(PlayerPedId(), false) then
-        FD.Notify('Nicht im Fahrzeug möglich.', 'error') return
+        FD.Notify(T('not_in_vehicle'), 'error') return
     end
     if not FD.HasItem('oilbarrier') then
-        FD.Notify('Keine Ölsperre im Inventar.', 'error') return
+        FD.Notify(T('hazmat_oil_no_item'), 'error') return
     end
     if not FD.CheckCooldown('hazmat_oil') then
         FD.Notify(T('cooldown'), 'warning') return
@@ -176,7 +176,7 @@ local function PlaceOilBarrier()
         {
             name     = 'fd_oil_remove_' .. tostring(obj),
             icon     = 'fas fa-times',
-            label    = 'Ölsperre entfernen',
+            label    = T('hazmat_label_barrier_remove'),
             distance = 2.0,
             onSelect = function()
                 for i, entry in ipairs(oilProps) do
@@ -187,7 +187,7 @@ local function PlaceOilBarrier()
                         break
                     end
                 end
-                FD.Notify('Ölsperre entfernt.', 'inform')
+                FD.Notify(T('hazmat_oil_removed'), 'inform')
             end,
             canInteract = function() return FD.HasJob() end,
         }
@@ -206,14 +206,14 @@ end
 local function PlaceHazmatZone()
     if not FD.HasJob() then FD.Notify(T('no_job'), 'error') return end
     if IsPedInAnyVehicle(PlayerPedId(), false) then
-        FD.Notify('Nicht im Fahrzeug möglich.', 'error') return
+        FD.Notify(T('not_in_vehicle'), 'error') return
     end
 
     local coords = GetEntityCoords(PlayerPedId())
 
     -- Radius per Input wählen
     local input = lib.inputDialog('Gefahrenzone', {
-        { type = 'number', label = 'Radius (Meter)', default = 20, min = 5, max = 100 }
+        { type = 'number', label = T('hazmat_zone_radius_label'), default = 20, min = 5, max = 100 }
     })
     if not input or not input[1] then return end
 
@@ -229,14 +229,14 @@ local function PlaceHazmatZone()
     -- Server informieren für andere Spieler
     TriggerServerEvent('d4rk_fd_utility:sv_hazmatZone', coords.x, coords.y, coords.z, radius, true)
 
-    FD.Notify(('Gefahrenzone gesetzt – Radius: %dm'):format(radius), 'success')
+    FD.Notify(T('hazmat_zone_set', radius), 'success')
     FD.Debug('hazmat', 'Zone platziert bei (%.1f, %.1f) Radius: %d', coords.x, coords.y, radius)
 end
 
 local function ClearHazmatZones()
     activeZones = {}
     TriggerServerEvent('d4rk_fd_utility:sv_hazmatZone', 0, 0, 0, 0, false)
-    FD.Notify('Gefahrenzonen gelöscht.', 'inform')
+    FD.Notify(T('hazmat_zone_cleared'), 'inform')
 end
 
 -- ─────────────────────────────────────────────
@@ -267,7 +267,7 @@ local function MarkVehicleHazmat(vehicle)
             end
         end
         FD.ClearVehicleOptions(vehicle, 'hazmat')
-        FD.Notify('Gefahrgut-Kennzeichnung entfernt.', 'inform')
+        FD.Notify(T('hazmat_mark_removed'), 'inform')
     else
         -- Markierung setzen
         FD.State.Set(vehicle, 'hazmat', 'hazmat_zone', nil, true)
@@ -310,7 +310,7 @@ local function MarkVehicleHazmat(vehicle)
             {
                 name        = 'fd_hazmat_mark',
                 icon        = 'fas fa-biohazard',
-                label       = 'Gefahrgut-Kennzeichnung entfernen',
+                label       = T('hazmat_label_mark_remove'),
                 distance    = 4.0,
                 onSelect    = function() MarkVehicleHazmat(vehicle) end,
                 canInteract = function() return FD.HasJob() end,
@@ -318,14 +318,14 @@ local function MarkVehicleHazmat(vehicle)
             {
                 name        = 'fd_oil_absorb',
                 icon        = 'fas fa-fill-drip',
-                label       = 'Ölbindemittel auftragen',
+                label       = T('hazmat_label_absorb'),
                 distance    = 4.0,
                 onSelect    = function()
                     if oilEntry.absorbed then
-                        FD.Notify('Ölbindemittel bereits aufgetragen – jetzt kehren!', 'warning') return
+                        FD.Notify(T('hazmat_absorb_already'), 'warning') return
                     end
                     if not FD.HasItem('oilabsorbent') then
-                        FD.Notify('Kein Ölbindemittel im Inventar.', 'error') return
+                        FD.Notify(T('hazmat_absorb_no_item'), 'error') return
                     end
                     local done = FD.PlayAnimWithProp(
                         'Ölbindemittel auftragen',
@@ -339,7 +339,7 @@ local function MarkVehicleHazmat(vehicle)
                     end
                     oilEntry.absorbed = true
                     FD.RemoveItem('oilabsorbent', 1)
-                    FD.Notify('Ölbindemittel aufgetragen – jetzt kehren!', 'inform')
+                    FD.Notify(T('hazmat_absorb_done'), 'inform')
                 end,
                 canInteract = function()
                     return FD.HasJob() and not oilEntry.absorbed
@@ -348,14 +348,14 @@ local function MarkVehicleHazmat(vehicle)
             {
                 name        = 'fd_oil_sweep',
                 icon        = 'fas fa-broom',
-                label       = 'Ölbindemittel zusammenkehren',
+                label       = T('hazmat_label_sweep'),
                 distance    = 4.0,
                 onSelect    = function()
                     if not oilEntry.absorbed then
-                        FD.Notify('Zuerst Ölbindemittel auftragen!', 'warning') return
+                        FD.Notify(T('hazmat_sweep_first'), 'warning') return
                     end
                     if not FD.HasItem('broom') then
-                        FD.Notify('Kein Besen im Inventar.', 'error') return
+                        FD.Notify(T('hazmat_sweep_no_item'), 'error') return
                     end
                     local done = FD.PlayAnimWithProp('Ölbindemittel zusammenkehren', Config.Attachments.sweep, 8000)
                     if not done then return end
@@ -368,7 +368,7 @@ local function MarkVehicleHazmat(vehicle)
                         end
                     end
 
-                    FD.Notify('Ölpfütze beseitigt – Bereich gesichert.', 'success')
+                    FD.Notify(T('hazmat_sweep_done'), 'success')
                     FD.Debug('hazmat', 'Ölpfütze unter Fahrzeug %d beseitigt', vehicle)
                 end,
                 canInteract = function()
@@ -385,7 +385,7 @@ local function MarkVehicleHazmat(vehicle)
 
         -- Kraftstoffaustritt markieren
         FD.State.Set(vehicle, 'hazmat', 'fuel_leak', nil, true)
-        FD.Notify('⚠ Fahrzeug als Gefahrgut markiert – Ölaustritt gesichert.', 'warning', 6000)
+        FD.Notify(T('hazmat_marked'), 'warning', 6000)
     end
 end
 
@@ -487,7 +487,7 @@ CreateThread(function()
                     {
                         name     = 'fd_hazmat_mark',
                         icon     = 'fas fa-biohazard',
-                        label    = isMarked and 'Gefahrgut-Kennzeichnung entfernen' or 'Als Gefahrgut markieren',
+                        label    = isMarked and T('hazmat_label_mark_remove') or T('hazmat_label_mark_add'),
                         distance = 4.0,
                         onSelect = function() MarkVehicleHazmat(closest) end,
                         canInteract = function() return FD.HasJob() end,
@@ -521,7 +521,7 @@ RegisterNetEvent('d4rk_fd_utility:cl_hazmatZone', function(x, y, z, radius, acti
             coords = vector3(x, y, z),
             radius = radius
         }
-        FD.Notify(('⚠ Gefahrenzone gesetzt – %dm Radius'):format(radius), 'warning', 6000)
+        FD.Notify(T('hazmat_zone_received', radius), 'warning', 6000)
     else
         -- Alle fremden Zonen löschen (vereinfacht)
         local own = {}
